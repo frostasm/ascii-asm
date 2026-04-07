@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useAppStore } from './composables/useAppStore';
 import { useTheme } from './composables/useTheme';
 import { useFileStore } from './composables/useFileStore';
@@ -14,9 +14,19 @@ const appVersion = __APP_VERSION__;
 // reactive() auto-unwraps nested refs so we can use store.xxx in templates
 const store     = reactive(useAppStore());
 const fileStore = reactive(useFileStore());
-const editorEl  = ref<HTMLElement | null>(null);
+const editorEl      = ref<HTMLElement | null>(null);
+const consoleBodyEl = ref<HTMLElement | null>(null);
 
 const { theme, toggleTheme } = useTheme();
+
+// ── Auto-scroll console on new output ───────────────────
+watch(() => store.stdout, () => {
+  nextTick(() => {
+    if (consoleBodyEl.value) {
+      consoleBodyEl.value.scrollTop = consoleBodyEl.value.scrollHeight;
+    }
+  });
+});
 
 // ── Help modal state ─────────────────────────────────────
 const helpVisible = ref(false);
@@ -32,7 +42,13 @@ watch(filesVisible, v => localStorage.setItem(FILES_VISIBLE_KEY, String(v)));
 const isDirty = computed(() => {
   const cf = fileStore.currentFile;
   if (!cf) return false;
-  return cf.code !== store.source;
+  if (cf.code !== store.source) return true;
+  // Check if breakpoints changed
+  const savedBps = cf.breakpoints ?? [];
+  const currentBps = [...store.breakpoints];
+  if (savedBps.length !== currentBps.length) return true;
+  const savedSet = new Set(savedBps);
+  return currentBps.some(bp => !savedSet.has(bp));
 });
 
 // ── File helpers ──────────────────────────────────────────
@@ -58,6 +74,7 @@ function handleOpenFile(id: string) {
   fileStore.setCurrentFileId(id);
   store.setSource(file.code);
   store.reset();
+  store.loadBreakpoints(file.breakpoints ?? []);
 }
 
 function handleNewFile() {
@@ -72,12 +89,14 @@ function handleNewFile() {
   fileStore.setCurrentFileId(file.id);
   store.setSource('');
   store.reset();
+  store.loadBreakpoints([]);
   filesVisible.value = true;
 }
 
 function handleSaveFile() {
+  const bps = [...store.breakpoints];
   if (fileStore.currentFileId) {
-    fileStore.saveFile(fileStore.currentFileId, store.source);
+    fileStore.saveFile(fileStore.currentFileId, store.source, bps);
   } else {
     const name = window.prompt('Save as (file name):');
     if (!name?.trim()) return;
@@ -86,6 +105,7 @@ function handleSaveFile() {
       return;
     }
     const file = fileStore.createFile(name.trim(), store.source);
+    fileStore.saveFile(file.id, file.code, bps);
     fileStore.setCurrentFileId(file.id);
   }
 }
@@ -523,7 +543,7 @@ function handleSpeedChange(e: Event) {
               <span class="material-symbols-outlined">delete_sweep</span>
             </button>
           </div>
-          <div class="console-body">
+          <div class="console-body" ref="consoleBodyEl">
             <div class="console-output">{{ store.stdout }}</div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
 import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights } from '@core/types';
 import { ParseError } from '@core/errors';
-import { createEditor, setDebugLine, setEditorReadOnly, type DebugLineMode } from '@editor/editor-setup';
+import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
 import type { EditorView } from '@codemirror/view';
 
@@ -96,9 +96,22 @@ export function useAppStore() {
         } else {
           breakpoints.add(line);
         }
+        // Keep the live debugger in sync so toggling during RUNNING/PAUSED takes effect immediately
+        if (dbg) dbg.toggleBreakpoint(line);
       },
     }, source.value, initialTheme));
     parseSource();
+  }
+
+  // ── Load breakpoints from a saved file ───────────────────
+  function loadBreakpoints(lines: number[]) {
+    breakpoints.clear();
+    for (const l of lines) breakpoints.add(l);
+    if (editorView.value) setBreakpoints(editorView.value, lines);
+    if (dbg) {
+      dbg.clearBreakpoints();
+      for (const l of lines) dbg.addBreakpoint(l);
+    }
   }
 
   // ── Parse ────────────────────────────────────────────────
@@ -368,6 +381,7 @@ export function useAppStore() {
 
     // Actions
     initEditor,
+    loadBreakpoints,
     setSource,
     run,
     debug,

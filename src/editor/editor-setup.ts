@@ -23,13 +23,16 @@ function buildThemeExtension(theme: AppTheme) {
 // ── Breakpoint gutter ──────────────────────────────────────
 
 const breakpointEffect = StateEffect.define<{ pos: number; on: boolean }>();
+const breakpointClearEffect = StateEffect.define<void>();
 
 const breakpointState = StateField.define<RangeSet<GutterMarker>>({
   create() { return RangeSet.empty; },
   update(set, transaction) {
     set = set.map(transaction.changes);
     for (const e of transaction.effects) {
-      if (e.is(breakpointEffect)) {
+      if (e.is(breakpointClearEffect)) {
+        set = RangeSet.empty;
+      } else if (e.is(breakpointEffect)) {
         if (e.value.on) {
           set = set.update({ add: [breakpointMarker.range(e.value.pos)] });
         } else {
@@ -249,4 +252,18 @@ export function setEditorReadOnly(view: EditorView, readOnly: boolean): void {
   });
 }
 
-export { breakpointEffect, breakpointState };
+/**
+ * Programmatically replace all breakpoint markers in the editor gutter.
+ * Used when loading a file that has saved breakpoints.
+ */
+export function setBreakpoints(view: EditorView, lines: number[]): void {
+  const effects: StateEffect<any>[] = [breakpointClearEffect.of(undefined)];
+  for (const lineNo of lines) {
+    if (lineNo < 1 || lineNo > view.state.doc.lines) continue;
+    const pos = view.state.doc.line(lineNo).from;
+    effects.push(breakpointEffect.of({ pos, on: true }));
+  }
+  view.dispatch({ effects });
+}
+
+export { breakpointEffect, breakpointClearEffect, breakpointState };

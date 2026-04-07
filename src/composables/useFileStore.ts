@@ -10,6 +10,7 @@ export interface VirtualFile {
   date: string;       // ISO-8601
   ideversion: string;
   code: string;
+  breakpoints?: number[];  // 1-based source line numbers
 }
 
 // ── Persistence helpers ────────────────────────────────────
@@ -69,13 +70,21 @@ export function useFileStore() {
   function duplicateFile(id: string, newName: string): VirtualFile {
     const src = files.value.find(f => f.id === id);
     if (!src) throw new Error(`File ${id} not found`);
-    return createFile(newName.trim(), src.code);
+    const copy = createFile(newName.trim(), src.code);
+    if (src.breakpoints?.length) {
+      files.value = files.value.map(f =>
+        f.id === copy.id ? { ...f, breakpoints: [...src.breakpoints!] } : f,
+      );
+      persist(files.value);
+      copy.breakpoints = [...src.breakpoints];
+    }
+    return copy;
   }
 
-  function saveFile(id: string, code: string) {
+  function saveFile(id: string, code: string, breakpoints?: number[]) {
     files.value = files.value.map(f =>
       f.id === id
-        ? { ...f, code, date: new Date().toISOString(), ideversion: __APP_VERSION__ }
+        ? { ...f, code, breakpoints: breakpoints ?? f.breakpoints ?? [], date: new Date().toISOString(), ideversion: __APP_VERSION__ }
         : f,
     );
     persist(files.value);
