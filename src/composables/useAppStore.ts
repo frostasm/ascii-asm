@@ -5,7 +5,7 @@ import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
 import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights } from '@core/types';
 import { ParseError } from '@core/errors';
-import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, type DebugLineMode } from '@editor/editor-setup';
+import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, toggleBreakpointLine, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
 import type { EditorView } from '@codemirror/view';
 
@@ -73,6 +73,12 @@ export function useAppStore() {
 
   const canContinue = computed(() =>
     vmState.value === VMState.PAUSED
+  );
+
+  const canRunToCursor = computed(() =>
+    vmState.value === VMState.IDLE   ||
+    vmState.value === VMState.PAUSED ||
+    vmState.value === VMState.HALTED
   );
 
   const canStop = computed(() =>
@@ -283,6 +289,44 @@ export function useAppStore() {
     updateStateFromVM();
   }
 
+  async function runToCursor() {
+    const view = editorView.value;
+    if (!view) return;
+    const cursorPos = view.state.selection.main.head;
+    const targetLine = view.state.doc.lineAt(cursorPos).number;
+
+    // Rebuild the VM when starting fresh (IDLE, HALTED, ERROR)
+    const needFreshVM = !dbg ||
+      vmState.value === VMState.HALTED ||
+      vmState.value === VMState.ERROR;
+
+    if (needFreshVM) {
+      if (!buildVM() || !dbg) return;
+      runtimeError.value = null;
+      stdout.value = '';
+    }
+
+    const result = await dbg!.runToCursor(targetLine);
+    if (result.error) {
+      runtimeError.value = result.error;
+    }
+    updateStateFromVM();
+  }
+
+  function toggleBreakpointAtCursor() {
+    const view = editorView.value;
+    if (!view) return;
+    const cursorPos = view.state.selection.main.head;
+    const lineNo = view.state.doc.lineAt(cursorPos).number;
+    const nowSet = toggleBreakpointLine(view, lineNo);
+    if (nowSet) {
+      breakpoints.add(lineNo);
+    } else {
+      breakpoints.delete(lineNo);
+    }
+    if (dbg) dbg.toggleBreakpoint(lineNo);
+  }
+
   function stop() {
     if (dbg) {
       dbg.stop();
@@ -378,6 +422,7 @@ export function useAppStore() {
     canContinue,
     canStop,
     canPause,
+    canRunToCursor,
 
     // Actions
     initEditor,
@@ -387,6 +432,8 @@ export function useAppStore() {
     debug,
     stepOver,
     continueExecution,
+    runToCursor,
+    toggleBreakpointAtCursor,
     stop,
     pause,
     reset,

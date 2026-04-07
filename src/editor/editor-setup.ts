@@ -186,6 +186,9 @@ export function createEditor(
       EditorView.theme({
         '&': { height: '100%' },
         '.cm-scroller': { overflow: 'auto' },
+        '.cm-breakpoint-gutter': {
+          cursor: 'pointer',
+        },
         '.cm-breakpoint-gutter .cm-gutterElement': {
           cursor: 'pointer',
           color: '#e53935',
@@ -264,6 +267,22 @@ export function setBreakpoints(view: EditorView, lines: number[]): void {
     effects.push(breakpointEffect.of({ pos, on: true }));
   }
   view.dispatch({ effects });
+}
+
+/**
+ * Toggle the breakpoint on a specific 1-based line number.
+ * Returns true if the breakpoint is now set, false if it was removed.
+ */
+export function toggleBreakpointLine(view: EditorView, lineNo: number): boolean {
+  if (lineNo < 1 || lineNo > view.state.doc.lines) return false;
+  const lineInfo = view.state.doc.line(lineNo);
+  const bps = view.state.field(breakpointState);
+  let hasBreakpoint = false;
+  bps.between(lineInfo.from, lineInfo.from, () => { hasBreakpoint = true; });
+  view.dispatch({
+    effects: breakpointEffect.of({ pos: lineInfo.from, on: !hasBreakpoint }),
+  });
+  return !hasBreakpoint;
 }
 
 export { breakpointEffect, breakpointClearEffect, breakpointState };

@@ -14,12 +14,14 @@ export const HOTKEYS = {
   run:       { key: 'F5',  ctrl: true,  shift: false, label: 'Ctrl+F5' },
   debug:     { key: 'F5',  ctrl: false, shift: false, label: 'F5'       },
   continue:  { key: 'F5',  ctrl: false, shift: false, label: 'F5'       },
-  step:      { key: 'F10', ctrl: false, shift: false, label: 'F10'      },
-  pause:     { key: 'F6',  ctrl: false, shift: false, label: 'F6'       },
+  step:        { key: 'F10', ctrl: false, shift: false, label: 'F10' },
+  runToCursor: { key: 'F7',  ctrl: false, shift: false, label: 'F7'  },
+  pause:       { key: 'F6',  ctrl: false, shift: false, label: 'F6'  },
   stop:      { key: 'F5',  ctrl: false, shift: true,  label: '⇧F5'     },
   reset:     { key: 'F5',  ctrl: true,  shift: true,  label: '⌃⇧F5'    },
   toggleFiles: { key: 'F3',  ctrl: false, shift: false, label: 'F3'     },
   newFile:     { key: 'F4',  ctrl: false, shift: false, label: 'F4'     },
+  toggleBreakpoint: { key: 'F9', ctrl: false, shift: false, label: 'F9' },
   help:        { key: 'F1',  ctrl: false, shift: false, label: 'F1'     },
 } satisfies Record<string, HotkeyDef>;
 

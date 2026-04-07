@@ -185,6 +185,13 @@ function handleGlobalKey(e: KeyboardEvent) {
     return;
   }
 
+  // F9 — toggle breakpoint at cursor line
+  if (matchesHotkey(e, HOTKEYS.toggleBreakpoint)) {
+    e.preventDefault();
+    store.toggleBreakpointAtCursor();
+    return;
+  }
+
   if (matchesHotkey(e, HOTKEYS.reset)) {
     e.preventDefault();
     store.reset();
@@ -200,6 +207,9 @@ function handleGlobalKey(e: KeyboardEvent) {
   } else if (matchesHotkey(e, HOTKEYS.step)) {
     e.preventDefault();
     if (store.canStep) store.stepOver();
+  } else if (matchesHotkey(e, HOTKEYS.runToCursor)) {
+    e.preventDefault();
+    if (store.canRunToCursor) store.runToCursor();
   } else if (matchesHotkey(e, HOTKEYS.debug)) {
     // plain F5 — context-sensitive: continue if paused, else start debug
     e.preventDefault();
@@ -383,9 +393,14 @@ function handleSpeedChange(e: Event) {
       Run <kbd>{{ HOTKEYS.run.label }}</kbd>
     </button>
 
-    <button class="btn-debug" @click="store.debug()" :disabled="!store.canDebug" :title="`Debug \u2014 ${HOTKEYS.debug.label}`">
-      <span class="material-symbols-outlined">bug_report</span>
-      Debug <kbd>{{ HOTKEYS.debug.label }}</kbd>
+    <button
+      :class="!store.canDebug ? 'btn-continue' : 'btn-debug'"
+      @click="store.canContinue ? store.continueExecution() : store.debug()"
+      :disabled="!store.canDebug && !store.canContinue"
+      :title="`${!store.canDebug ? 'Continue' : 'Debug'} \u2014 ${HOTKEYS.debug.label}`"
+    >
+      <span class="material-symbols-outlined">{{ !store.canDebug ? 'fast_forward' : 'bug_report' }}</span>
+      {{ !store.canDebug ? 'Continue' : 'Debug' }} <kbd>{{ HOTKEYS.debug.label }}</kbd>
     </button>
 
     <div class="separator"></div>
@@ -395,9 +410,9 @@ function handleSpeedChange(e: Event) {
       Step <kbd>{{ HOTKEYS.step.label }}</kbd>
     </button>
 
-    <button class="btn-continue" @click="store.continueExecution()" :disabled="!store.canContinue" :title="`Continue \u2014 ${HOTKEYS.continue.label}`">
-      <span class="material-symbols-outlined">fast_forward</span>
-      Continue <kbd>{{ HOTKEYS.continue.label }}</kbd>
+    <button class="btn-run-to-cursor" @click="store.runToCursor()" :disabled="!store.canRunToCursor" :title="`Run to Cursor \u2014 ${HOTKEYS.runToCursor.label}`">
+      <span class="material-symbols-outlined">arrow_downward</span>
+      Run to Cursor <kbd>{{ HOTKEYS.runToCursor.label }}</kbd>
     </button>
 
     <div class="separator"></div>

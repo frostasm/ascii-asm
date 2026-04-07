@@ -68,6 +68,19 @@ export class Debugger {
     return this.vm.run((line) => this.breakpoints.has(line), false);
   }
 
+  /** Run until targetLine (or next breakpoint / HALT / error).
+   *  Permanent breakpoints remain active — the predicate is an OR.
+   */
+  async runToCursor(targetLine: number): Promise<StepResult> {
+    // When already paused mid-program, skip the check on iteration 0
+    // so we don't immediately re-pause on the line we're already sitting on.
+    const skipFirst = this.vm.state !== VMState.IDLE;
+    return this.vm.run(
+      (line) => this.breakpoints.has(line) || line === targetLine,
+      skipFirst,
+    );
+  }
+
   /** Stop / abort execution. */
   stop(): void {
     this.vm.requestStop();
