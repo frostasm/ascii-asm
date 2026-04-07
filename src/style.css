@@ -928,3 +928,7 @@ html, body {
   font-weight: 500;
   color: var(--ide-text);
 }
+
+/* ── Memory / Register Access Highlights ──────────────────────── */
+/* Colors are defined as hex constants in App.vue (ACCESS_COLOR_*) */
+/* and applied via inline :style bindings — no CSS classes needed. */

@@ -3,7 +3,7 @@ import { Lexer } from '@core/lexer';
 import { Parser } from '@core/parser';
 import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
-import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS } from '@core/types';
+import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights } from '@core/types';
 import { ParseError } from '@core/errors';
 import { createEditor, setDebugLine, setEditorReadOnly, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
@@ -43,6 +43,14 @@ export function useAppStore() {
   const speed = ref<number>(savedSpeed ? Number(savedSpeed) : Infinity);
   const stats = reactive<VMStats>(createEmptyStats());
 
+  // ── Access Visualization ────────────────────────────────
+  /** Visualization is disabled when speed exceeds this threshold (IPS). */
+  const VISUALIZATION_IPS_THRESHOLD = 10;
+  const accessHighlights = ref<AccessHighlights>(createEmptyHighlights());
+  const accessVisualizationEnabled = computed(
+    () => speed.value <= VISUALIZATION_IPS_THRESHOLD,
+  );
+
   // ── Errors ───────────────────────────────────────────────
   const parseErrors = ref<ParseError[]>([]);
   const runtimeError = ref<string | null>(null);
@@ -60,7 +68,7 @@ export function useAppStore() {
   );
 
   const canStep = computed(() =>
-    vmState.value === VMState.PAUSED || vmState.value === VMState.IDLE
+    vmState.value === VMState.PAUSED || vmState.value === VMState.IDLE || vmState.value === VMState.HALTED
   );
 
   const canContinue = computed(() =>
@@ -188,6 +196,18 @@ export function useAppStore() {
     stats.registerReads = s.registerReads;
     stats.registerWrites = s.registerWrites;
 
+    // Sync access highlights (only when visualization is enabled)
+    if (accessVisualizationEnabled.value) {
+      accessHighlights.value = {
+        memReads:  [...vm.lastAccess.memReads],
+        memWrites: [...vm.lastAccess.memWrites],
+        regReads:  [...vm.lastAccess.regReads],
+        regWrites: [...vm.lastAccess.regWrites],
+      };
+    } else {
+      accessHighlights.value = createEmptyHighlights();
+    }
+
     if (editorView.value) {
       const mode: DebugLineMode = vm.state === VMState.HALTED ? 'halted' : 'paused';
       setDebugLine(editorView.value, currentLine.value, mode);
@@ -228,8 +248,8 @@ export function useAppStore() {
   }
 
   async function stepOver() {
-    if (!dbg) {
-      // First step → build VM
+    if (!dbg || vmState.value === VMState.HALTED) {
+      // No VM yet, or previous run finished/errored — build a fresh VM
       if (!buildVM() || !dbg) return;
       runtimeError.value = null;
       stdout.value = '';
@@ -290,6 +310,8 @@ export function useAppStore() {
     // Reset stats
     Object.assign(stats, createEmptyStats());
 
+    accessHighlights.value = createEmptyHighlights();
+
     if (editorView.value) {
       setDebugLine(editorView.value, null);
       setEditorReadOnly(editorView.value, false);
@@ -333,6 +355,8 @@ export function useAppStore() {
     breakpoints,
     speed,
     stats,
+    accessHighlights,
+    accessVisualizationEnabled,
 
     // Computed
     canRun,

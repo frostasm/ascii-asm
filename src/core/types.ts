@@ -13,7 +13,7 @@ export enum TokenType {
   LBRACKET = 'LBRACKET',          // [
   RBRACKET = 'RBRACKET',          // ]
   COMMA = 'COMMA',                // ,
-  HEX_COLOR = 'HEX_COLOR',        // #RRGGBB color literal
+  HEX_COLOR = 'HEX_COLOR',        // #RRGGBB or #RRGGBBAA color literal
   NEWLINE = 'NEWLINE',
   EOF = 'EOF',
 }
@@ -163,7 +163,7 @@ export interface DataDirective {
   address: number;
   dataType: DataType;
   value: number | string; // number for WORD/DWORD/QWORD/CHAR; string for TEXT
-  /** Optional CSS hex color (#RRGGBB) for memory visualization highlighting */
+  /** Optional CSS hex color (#RRGGBB or #RRGGBBAA) for memory visualization highlighting */
   color?: string;
 }
 
@@ -239,6 +239,29 @@ export function createEmptyStats(): VMStats {
     registerReads: 0,
     registerWrites: 0,
   };
+}
+
+// ─── Access Highlights ─────────────────────────────────────────
+
+/**
+ * Tracks which memory cells and registers were accessed (read / written)
+ * during the most recently executed instruction.
+ * Used for transient visual highlighting in the IDE.
+ */
+export interface AccessHighlights {
+  /** Memory cell indices that were read. */
+  memReads: number[];
+  /** Memory cell indices that were written. */
+  memWrites: number[];
+  /** Register names that were read (e.g. "AX"). */
+  regReads: string[];
+  /** Register names that were written. */
+  regWrites: string[];
+}
+
+/** Create an empty AccessHighlights object. */
+export function createEmptyHighlights(): AccessHighlights {
+  return { memReads: [], memWrites: [], regReads: [], regWrites: [] };
 }
 
 // ─── VM Speed Presets ──────────────────────────────────────────

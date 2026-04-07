@@ -244,6 +244,21 @@ function stopResize() {
   localStorage.setItem(STORAGE_KEY_H, String(consoleHeight.value));
 }
 
+// ── Access Highlight Colors ─────────────────────────────────
+// #RRGGBBAA — alpha baked in: 0x8C ≈ 0.55 (memory), 0x4D ≈ 0.30 (registers)
+const MEM_READ_COLOR  = '#22c55e8c' // green  55% — memory read
+const MEM_WRITE_COLOR = '#ef44448c' // red    55% — memory write
+const MEM_BOTH_COLOR  = '#f59e0b8c' // orange 55% — memory read + write
+const REG_READ_COLOR  = '#22c55e4d' // green  30% — register read
+const REG_WRITE_COLOR = '#ef44444d' // red    30% — register write
+const REG_BOTH_COLOR  = '#f59e0b4d' // orange 30% — register read + write
+
+// ── Access highlight sets (O(1) per-cell / per-register lookup) ──
+const accessReadSet  = computed(() => new Set(store.accessHighlights.memReads));
+const accessWriteSet = computed(() => new Set(store.accessHighlights.memWrites));
+const regReadSet     = computed(() => new Set(store.accessHighlights.regReads));
+const regWriteSet    = computed(() => new Set(store.accessHighlights.regWrites));
+
 // ── Memory hex-grid ───────────────────────────────────────
 const CELLS_PER_ROW = 10;
 
@@ -258,14 +273,34 @@ const memoryRows = computed(() => {
   return rows;
 });
 
-/** Convert a #RRGGBB color from a #data directive to a subtle background tint. */
+/** Return inline style for a memory cell: access highlight (priority) or #data tint. */
 function memCellStyle(cellIndex: number): Record<string, string> {
+  const isRead  = accessReadSet.value.has(cellIndex);
+  const isWrite = accessWriteSet.value.has(cellIndex);
+  if (isRead && isWrite) return { backgroundColor: MEM_BOTH_COLOR };
+  if (isWrite)           return { backgroundColor: MEM_WRITE_COLOR };
+  if (isRead)            return { backgroundColor: MEM_READ_COLOR };
+  // Fall back to #data directive tint (append 0x47 ≈ 28% alpha)
   const hex = store.memoryColors[cellIndex];
   if (!hex) return {};
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return { backgroundColor: `rgba(${r}, ${g}, ${b}, 0.28)` };
+  if (hex.length === 7) {
+    // If the color is in #RRGGBB format, append alpha
+    return { backgroundColor: `${hex}47` };
+  } else if (hex.length === 9) {
+    // If the color is already in #RRGGBBAA format, use as is
+    return { backgroundColor: hex };
+  }
+  return {};
+}
+
+/** Return inline style for a register row based on access highlights. */
+function regRowStyle(name: string): Record<string, string> {
+  const isRead  = regReadSet.value.has(name);
+  const isWrite = regWriteSet.value.has(name);
+  if (isRead && isWrite) return { backgroundColor: REG_BOTH_COLOR };
+  if (isWrite)           return { backgroundColor: REG_WRITE_COLOR };
+  if (isRead)            return { backgroundColor: REG_READ_COLOR };
+  return {};
 }
 
 // ── Side Panel Tabs ──────────────────────────────────────
@@ -548,7 +583,12 @@ function handleSpeedChange(e: Event) {
         <!-- Registers -->
         <div>
           <div class="registers-list">
-            <div class="register-row" v-for="name in ['AX', 'BX', 'CX', 'DX']" :key="name">
+            <div
+              class="register-row"
+              v-for="name in ['AX', 'BX', 'CX', 'DX']"
+              :key="name"
+              :style="regRowStyle(name)"
+            >
               <span class="register-name">{{ name }}</span>
               <span class="register-type">{{ formatRegisterType(store.registers[name]) }}</span>
               <span class="register-value">{{ formatRegisterValue(store.registers[name]) }}</span>

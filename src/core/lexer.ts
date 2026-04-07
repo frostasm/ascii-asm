@@ -148,16 +148,22 @@ export class Lexer {
     return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
   }
 
-  /** Returns true when the current '#' starts a #RRGGBB hex color literal. */
+  /** Returns true when the current '#' starts a #RRGGBB or #RRGGBBAA hex color literal. */
   private isHexColorAhead(): boolean {
-    // Need exactly 6 hex digits after '#', then end/whitespace/comma/newline
-    for (let i = 1; i <= 6; i++) {
-      const c = this.source[this.pos + i];
-      if (!c || !this.isHexDigit(c)) return false;
+    // Try 8-digit (#RRGGBBAA) first, then 6-digit (#RRGGBB)
+    for (const len of [8, 6]) {
+      let valid = true;
+      for (let i = 1; i <= len; i++) {
+        const c = this.source[this.pos + i];
+        if (!c || !this.isHexDigit(c)) { valid = false; break; }
+      }
+      if (valid) {
+        const after = this.source[this.pos + len + 1];
+        if (!after || after === ' ' || after === '\t' || after === '\n' ||
+            after === '\r' || after === ';' || after === ',') return true;
+      }
     }
-    const after = this.source[this.pos + 7];
-    return !after || after === ' ' || after === '\t' || after === '\n' ||
-           after === '\r' || after === ';' || after === ',';
+    return false;
   }
 
   private isIdentStart(ch: string): boolean {
@@ -195,7 +201,11 @@ export class Lexer {
     const startCol = this.col;
     let value = '#';
     this.advance(); // consume '#'
-    for (let i = 0; i < 6; i++) {
+    // Determine if this is #RRGGBBAA (8 digits) or #RRGGBB (6 digits)
+    const c7 = this.source[this.pos + 6];
+    const c8 = this.source[this.pos + 7];
+    const len = (c7 && this.isHexDigit(c7) && c8 && this.isHexDigit(c8)) ? 8 : 6;
+    for (let i = 0; i < len; i++) {
       value += this.source[this.pos].toLowerCase();
       this.advance();
     }

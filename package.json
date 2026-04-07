@@ -1,7 +1,7 @@
 {
   "name": "asciiasm-ide",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "AsciiAsm Web IDE — browser-based IDE for the AsciiAsm educational assembly language",
   "scripts": {

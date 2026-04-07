@@ -9,6 +9,7 @@ import { acceptCompletion, completionStatus } from '@codemirror/autocomplete';
 import { asciiAsmLanguage } from './asciiasm-language';
 import { asciiAsmLinter } from './asciiasm-linter';
 import { asciiAsmAutocomplete } from './asciiasm-autocomplete';
+import { colorSwatchPlugin } from './asciiasm-color-swatch';
 
 // ── Theme compartment ────────────────────────────────────────
 
@@ -162,6 +163,7 @@ export function createEditor(
       activeDebugLineState,
       activeDebugLineDecoration,
       debugGutter,
+      colorSwatchPlugin,
       updateListener,
       keymap.of([
         // Tab: accept autocomplete when dropdown is open, otherwise indent
@@ -200,6 +202,16 @@ export function createEditor(
         },
         '.cm-debug-halted-line': {
           backgroundColor: 'rgba(39, 174, 96, 0.18)',
+        },
+        '.cm-color-swatch': {
+          display: 'inline-block',
+          width: '10px',
+          height: '10px',
+          borderRadius: '2px',
+          marginLeft: '4px',
+          verticalAlign: 'middle',
+          border: '1px solid rgba(128, 128, 128, 0.4)',
+          pointerEvents: 'none',
         },
       }),
     ],

@@ -174,7 +174,7 @@ export class Parser {
         value = parseInt(numToken.value, 10);
       }
 
-      // Optional third parameter: , #RRGGBB  — background color for memory visualization
+      // Optional third parameter: , #RRGGBB / #RRGGBBAA  — background color for memory visualization
       let color: string | undefined;
       if (this.check(TokenType.COMMA)) {
         const savedPos = this.pos;
@@ -185,7 +185,7 @@ export class Parser {
         } else {
           // Not a color token — report error and consume to recover
           const t = this.current();
-          this.addError(`Expected hex color literal (#RRGGBB) after comma`, t.line, t.col);
+          this.addError(`Expected hex color literal (#RRGGBB or #RRGGBBAA) after comma`, t.line, t.col);
           this.pos = savedPos; // backtrack
         }
       }

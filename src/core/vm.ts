@@ -2,6 +2,7 @@ import {
   Program, Instruction, Mnemonic, Operand, Register, DataType,
   RegisterValue, VMState, StepResult, DATA_TYPE_RANGE, DATA_TYPE_SIZE,
   JUMP_MNEMONICS, OverflowMode, VMStats, createEmptyStats,
+  AccessHighlights, createEmptyHighlights,
 } from './types';
 import { Memory } from './memory';
 import { RegisterFile } from './registers';
@@ -40,6 +41,12 @@ export class VM {
 
   /** Execution statistics — reset on reset(). */
   stats: VMStats = createEmptyStats();
+
+  /**
+   * Per-cell and per-register access highlights for the most recently executed
+   * instruction. Reset at the start of every _step() call.
+   */
+  lastAccess: AccessHighlights = createEmptyHighlights();
 
   /** Optional callback fired after each step in run() for live UI updates. */
   onAfterStep?: () => void;
@@ -111,6 +118,7 @@ export class VM {
     this._pauseRequested = false;
     this._stopRequested = false;
     this.stats = createEmptyStats();
+    this.lastAccess = createEmptyHighlights();
     const startIndex = this.program.labels.get('_start');
     this.ip = startIndex ?? 0;
   }
@@ -139,6 +147,7 @@ export class VM {
     }
 
     this.state = VMState.RUNNING;
+    this.lastAccess = createEmptyHighlights(); // reset per-instruction access tracking
     const instr = this.program.instructions[this.ip];
     let output: string | undefined;
 
@@ -276,6 +285,7 @@ export class VM {
       const value = this.resolveSource(src, line);
       this.registers.set(dst.reg, value);
       this.stats.registerWrites++;
+      this.lastAccess.regWrites.push(dst.reg as string);
       // Update flags on MOV
       const numVal = value.type === 'char' ? value.value - 32 : value.value;
       this.registers.updateFlags(numVal, false);
@@ -289,13 +299,13 @@ export class VM {
         if (dataType === DataType.CHAR) {
           if (regVal.type !== 'char') throw new TypeMismatchError(line);
           this.memory.writeChar(address, regVal.value, line);
-          this.trackMemoryWrite(DataType.CHAR);
+          this.trackMemoryWrite(address, DataType.CHAR);
         } else if (dataType === DataType.TEXT) {
           throw new RuntimeError('Cannot MOV to TEXT with register', line);
         } else {
           if (regVal.type !== 'integer') throw new TypeMismatchError(line);
           const { overflow } = this.memory.writeInteger(address, dataType, regVal.value, line);
-          this.trackMemoryWrite(dataType);
+          this.trackMemoryWrite(address, dataType);
           this.registers.updateFlags(regVal.value, overflow);
           this.checkOverflowHalt(overflow, line);
         }
@@ -304,13 +314,13 @@ export class VM {
           throw new TypeMismatchError(line); // MOV CHAR [addr], imm is forbidden
         }
         const { overflow } = this.memory.writeInteger(address, dataType, src.value, line);
-        this.trackMemoryWrite(dataType);
+        this.trackMemoryWrite(address, dataType);
         this.registers.updateFlags(src.value, overflow);
         this.checkOverflowHalt(overflow, line);
       } else if (src.kind === 'char_immediate') {
         if (dataType !== DataType.CHAR) throw new TypeMismatchError(line);
         this.memory.writeChar(address, src.value.charCodeAt(0), line);
-        this.trackMemoryWrite(DataType.CHAR);
+        this.trackMemoryWrite(address, DataType.CHAR);
       } else {
         throw new RuntimeError('Invalid MOV operands', line);
       }
@@ -356,6 +366,7 @@ export class VM {
         const clamped = Math.max(range[0], Math.min(range[1], mathResult));
         this.registers.set(dst.reg, { type: 'char', value: clamped });
         this.stats.registerWrites++;
+        this.lastAccess.regWrites.push(dst.reg as string);
         this.registers.updateFlags(mathResult - 32, overflow); // relative to ASCII space
         this.checkOverflowHalt(overflow, line);
       } else {
@@ -365,6 +376,7 @@ export class VM {
         // No specific type constraint for register integers; overflow check happens on write
         this.registers.set(dst.reg, { type: 'integer', value: mathResult });
         this.stats.registerWrites++;
+        this.lastAccess.regWrites.push(dst.reg as string);
         this.registers.updateFlags(mathResult, false);
       }
     } else if (dst.kind === 'memory') {
@@ -379,10 +391,10 @@ export class VM {
       let currentValue: number;
       if (dataType === DataType.CHAR) {
         currentValue = this.memory.readChar(address, line);
-        this.trackMemoryRead(DataType.CHAR);
+        this.trackMemoryRead(address, DataType.CHAR);
       } else {
         currentValue = this.memory.readInteger(address, dataType, line);
-        this.trackMemoryRead(dataType);
+        this.trackMemoryRead(address, dataType);
       }
 
       // Resolve source
@@ -405,12 +417,12 @@ export class VM {
         const overflow = mathResult < range[0] || mathResult > range[1];
         const clamped = Math.max(range[0], Math.min(range[1], mathResult));
         this.memory.writeChar(address, clamped, line);
-        this.trackMemoryWrite(DataType.CHAR);
+        this.trackMemoryWrite(address, DataType.CHAR);
         this.registers.updateFlags(mathResult - 32, overflow);
         this.checkOverflowHalt(overflow, line);
       } else {
         const { overflow } = this.memory.writeInteger(address, dataType, mathResult, line);
-        this.trackMemoryWrite(dataType);
+        this.trackMemoryWrite(address, dataType);
         this.registers.updateFlags(mathResult, overflow);
         this.checkOverflowHalt(overflow, line);
       }
@@ -454,7 +466,7 @@ export class VM {
         if (op.dataType === DataType.CHAR) {
           const addr = this.resolveAddress(op.address, line);
           const val = this.memory.readChar(addr, line);
-          this.trackMemoryRead(DataType.CHAR);
+          this.trackMemoryRead(addr, DataType.CHAR);
           return { type: 'char', value: val };
         }
         if (op.dataType === DataType.TEXT) {
@@ -462,7 +474,7 @@ export class VM {
         }
         const addr = this.resolveAddress(op.address, line);
         const val = this.memory.readInteger(addr, op.dataType, line);
-        this.trackMemoryRead(op.dataType);
+        this.trackMemoryRead(addr, op.dataType);
         return { type: 'integer', value: val };
       }
       default:
@@ -538,7 +550,7 @@ export class VM {
       }
       const storedText = text + '$';
       this.memory.writeText(address, storedText, line);
-      this.trackMemoryWriteBytes(storedText.length);
+      this.trackMemoryWriteBytes(address, storedText.length);
       this.registers.updateFlags(0, false);
     } else if (dataType === DataType.CHAR) {
       const charCode = input.length > 0 ? input.charCodeAt(0) : 32;
@@ -546,14 +558,14 @@ export class VM {
       const overflow = charCode < range[0] || charCode > range[1];
       const clamped = Math.max(range[0], Math.min(range[1], charCode));
       this.memory.writeChar(address, clamped, line);
-      this.trackMemoryWrite(DataType.CHAR);
+      this.trackMemoryWrite(address, DataType.CHAR);
       this.registers.updateFlags(clamped - 32, overflow);
       this.checkOverflowHalt(overflow, line);
     } else {
       // WORD / DWORD / QWORD
       const num = parseInt(input, 10) || 0;
       const { overflow } = this.memory.writeInteger(address, dataType, num, line);
-      this.trackMemoryWrite(dataType);
+      this.trackMemoryWrite(address, dataType);
       this.registers.updateFlags(num, overflow);
       this.checkOverflowHalt(overflow, line);
     }
@@ -576,14 +588,14 @@ export class VM {
 
         if (dataType === DataType.TEXT) {
           output = this.memory.readText(address, line);
-          this.trackMemoryReadBytes(output.length);
+          this.trackMemoryReadBytes(address, output.length);
         } else if (dataType === DataType.CHAR) {
           output = String.fromCharCode(this.memory.readChar(address, line));
-          this.trackMemoryRead(DataType.CHAR);
+          this.trackMemoryRead(address, DataType.CHAR);
         } else {
           // WORD / DWORD / QWORD — output without leading zeros and '+'
           const num = this.memory.readInteger(address, dataType, line);
-          this.trackMemoryRead(dataType);
+          this.trackMemoryRead(address, dataType);
           output = num.toString();
         }
       } else if (op.kind === 'register') {
@@ -639,14 +651,14 @@ export class VM {
         const addr = this.resolveAddress(op.address, line);
         if (op.dataType === DataType.CHAR) {
           const val = this.memory.readChar(addr, line);
-          this.trackMemoryRead(DataType.CHAR);
+          this.trackMemoryRead(addr, DataType.CHAR);
           return { type: 'char', value: val };
         }
         if (op.dataType === DataType.TEXT) {
           throw new RuntimeError('Cannot use TEXT as register source', line);
         }
         const val = this.memory.readInteger(addr, op.dataType, line);
-        this.trackMemoryRead(op.dataType);
+        this.trackMemoryRead(addr, op.dataType);
         return { type: 'integer', value: val };
       }
       default:
@@ -675,6 +687,7 @@ export class VM {
       throw new RuntimeError(`Register ${reg} is not initialized`, line);
     }
     this.stats.registerReads++;
+    this.lastAccess.regReads.push(reg as string);
     return val;
   }
 
@@ -690,23 +703,29 @@ export class VM {
 
   // ── Stats tracking helpers ────────────────────────────────
 
-  private trackMemoryRead(dataType: DataType): void {
+  private trackMemoryRead(address: number, dataType: DataType): void {
     this.stats.memoryReads++;
-    this.stats.memoryReadBytes += DATA_TYPE_SIZE[dataType] || 0;
+    const size = DATA_TYPE_SIZE[dataType] || 0;
+    this.stats.memoryReadBytes += size;
+    for (let i = 0; i < size; i++) this.lastAccess.memReads.push(address + i);
   }
 
-  private trackMemoryReadBytes(bytes: number): void {
+  private trackMemoryReadBytes(address: number, bytes: number): void {
     this.stats.memoryReads++;
     this.stats.memoryReadBytes += bytes;
+    for (let i = 0; i < bytes; i++) this.lastAccess.memReads.push(address + i);
   }
 
-  private trackMemoryWrite(dataType: DataType): void {
+  private trackMemoryWrite(address: number, dataType: DataType): void {
     this.stats.memoryWrites++;
-    this.stats.memoryWriteBytes += DATA_TYPE_SIZE[dataType] || 0;
+    const size = DATA_TYPE_SIZE[dataType] || 0;
+    this.stats.memoryWriteBytes += size;
+    for (let i = 0; i < size; i++) this.lastAccess.memWrites.push(address + i);
   }
 
-  private trackMemoryWriteBytes(bytes: number): void {
+  private trackMemoryWriteBytes(address: number, bytes: number): void {
     this.stats.memoryWrites++;
     this.stats.memoryWriteBytes += bytes;
+    for (let i = 0; i < bytes; i++) this.lastAccess.memWrites.push(address + i);
   }
 }
