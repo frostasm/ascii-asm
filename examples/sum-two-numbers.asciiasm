@@ -1,0 +1,12 @@
+#memory 16
+#data 0, DWORD 0
+#data 4, DWORD 0
+
+_start:
+  READ  DWORD [0]
+  READ  DWORD [4]
+  MOV   AX, DWORD [0]
+  ADD   AX, DWORD [4]
+  MOV   DWORD [0], AX
+  WRITELN DWORD [0]
+  HALT

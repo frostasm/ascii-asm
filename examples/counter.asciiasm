@@ -1,0 +1,18 @@
+#memory 32
+#data 0, DWORD 0    ; n
+#data 4, DWORD 0    ; i
+#data 8, QWORD 0    ; total
+
+_start:
+  READ  DWORD [0]        ; n
+  MOV   DWORD [4], 1     ; i = 1
+loop:
+  MOV   AX, DWORD [4]
+  CMP   AX, DWORD [0]
+  JG    done
+  ADD   QWORD [8], AX    ; total += i
+  ADD   DWORD [4], 1     ; i++
+  JMP   loop
+done:
+  WRITELN QWORD [8]
+  HALT

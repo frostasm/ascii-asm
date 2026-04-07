@@ -1,0 +1,8 @@
+#memory 8
+#data 0, CHAR 'A'
+
+_start:
+  WRITE CHAR [0]         ; outputs: A
+  ADD   CHAR [0], 1      ; 'A' + 1 = 'B'
+  WRITELN CHAR [0]       ; outputs: B + newline
+  HALT

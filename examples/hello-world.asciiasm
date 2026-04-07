@@ -1,0 +1,6 @@
+#memory 32
+#data 0, TEXT "Hello, World!$"
+
+_start:
+  WRITELN TEXT [0]
+  HALT
