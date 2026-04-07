@@ -4,7 +4,7 @@ import { useAppStore } from './composables/useAppStore';
 import { useTheme } from './composables/useTheme';
 import { useFileStore } from './composables/useFileStore';
 import HelpModal from './HelpModal.vue';
-import { formatRegisterValue, formatRegisterType, formatMemoryCell } from '@utils/formatter';
+import { formatRegisterValue, formatRegisterType, formatMemoryCell, formatBytes } from '@utils/formatter';
 import { setEditorTheme } from '@editor/editor-setup';
 import { HOTKEYS, matchesHotkey } from '@utils/hotkeys';
 
@@ -174,6 +174,9 @@ function handleGlobalKey(e: KeyboardEvent) {
   } else if (matchesHotkey(e, HOTKEYS.run)) {
     e.preventDefault();
     if (store.canRun) store.run();
+  } else if (matchesHotkey(e, HOTKEYS.pause)) {
+    e.preventDefault();
+    if (store.canPause) store.pause();
   } else if (matchesHotkey(e, HOTKEYS.step)) {
     e.preventDefault();
     if (store.canStep) store.stepOver();
@@ -264,6 +267,20 @@ function memCellStyle(cellIndex: number): Record<string, string> {
   const b = parseInt(hex.slice(5, 7), 16);
   return { backgroundColor: `rgba(${r}, ${g}, ${b}, 0.28)` };
 }
+
+// ── Side Panel Tabs ──────────────────────────────────────
+const activeTab = ref<'state' | 'stats'>('state');
+
+// ── Stats computed helpers ────────────────────────────────
+const sortedInstructionCounts = computed(() => {
+  const entries = Object.entries(store.stats.instructionCounts);
+  return entries.sort((a, b) => b[1] - a[1]);
+});
+
+function handleSpeedChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value;
+  store.setSpeed(value === 'Infinity' ? Infinity : Number(value));
+}
 </script>
 
 <template>
@@ -335,6 +352,11 @@ function memCellStyle(cellIndex: number): Record<string, string> {
       Stop <kbd>{{ HOTKEYS.stop.label }}</kbd>
     </button>
 
+    <button class="btn-pause" @click="store.pause()" :disabled="!store.canPause" :title="`Pause \u2014 ${HOTKEYS.pause.label}`">
+      <span class="material-symbols-outlined">pause</span>
+      Pause <kbd>{{ HOTKEYS.pause.label }}</kbd>
+    </button>
+
     <button class="btn-reset" @click="store.reset()" :title="`Reset VM \u2014 ${HOTKEYS.reset.label}`">
       <span class="material-symbols-outlined">restart_alt</span>
       Reset <kbd>{{ HOTKEYS.reset.label }}</kbd>
@@ -343,6 +365,18 @@ function memCellStyle(cellIndex: number): Record<string, string> {
     <span class="vm-status" :class="store.vmState.toLowerCase()">
       {{ store.vmState }}
     </span>
+
+    <!-- Speed selector -->
+    <select
+      class="speed-selector"
+      :value="store.speed === Infinity ? 'Infinity' : store.speed"
+      @change="handleSpeedChange"
+      title="VM execution speed (instructions per second)"
+    >
+      <option v-for="p in store.SPEED_PRESETS" :key="p.label" :value="p.value === Infinity ? 'Infinity' : p.value">
+        {{ p.label }}
+      </option>
+    </select>
 
     <button class="btn-theme" @click="toggleTheme()" :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
       <span class="material-symbols-outlined">{{ theme === 'dark' ? 'light_mode' : 'dark_mode' }}</span>
@@ -496,13 +530,20 @@ function memCellStyle(cellIndex: number): Record<string, string> {
     <!-- ── Side Panel ────────────────────────────────── -->
     <div class="side-panel">
 
-      <!-- Panel header -->
+      <!-- Panel header with tabs -->
       <div class="tab-bar">
-        <span class="panel-title">Registers &amp; Memory</span>
+        <button
+          :class="{ active: activeTab === 'state' }"
+          @click="activeTab = 'state'"
+        >Registers &amp; Memory</button>
+        <button
+          :class="{ active: activeTab === 'stats' }"
+          @click="activeTab = 'stats'"
+        >Statistics</button>
       </div>
 
-      <!-- Panel content -->
-      <div class="panel-content">
+      <!-- Panel content: Registers & Memory -->
+      <div class="panel-content" v-show="activeTab === 'state'">
 
         <!-- Registers -->
         <div>
@@ -556,6 +597,69 @@ function memCellStyle(cellIndex: number): Record<string, string> {
         </div>
 
       </div>
+
+      <!-- Panel content: Statistics -->
+      <div class="panel-content" v-show="activeTab === 'stats'">
+        <div class="stats-panel">
+
+          <!-- Total instructions -->
+          <div class="stats-section">
+            <div class="section-label">Execution</div>
+            <div class="stats-row">
+              <span class="stats-label">Total instructions</span>
+              <span class="stats-value">{{ store.stats.totalInstructions.toLocaleString() }}</span>
+            </div>
+          </div>
+
+          <!-- Per-instruction breakdown -->
+          <div class="stats-section" v-if="sortedInstructionCounts.length > 0">
+            <div class="section-label">Instruction Counts</div>
+            <div class="stats-row" v-for="[mnemonic, count] in sortedInstructionCounts" :key="mnemonic">
+              <span class="stats-label">{{ mnemonic }}</span>
+              <span class="stats-value">{{ count.toLocaleString() }}</span>
+            </div>
+          </div>
+
+          <!-- Memory access -->
+          <div class="stats-section">
+            <div class="section-label">Memory Access</div>
+            <div class="stats-row">
+              <span class="stats-label">Read operations</span>
+              <span class="stats-value">{{ store.stats.memoryReads.toLocaleString() }}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">Data read</span>
+              <span class="stats-value">{{ formatBytes(store.stats.memoryReadBytes) }}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">Write operations</span>
+              <span class="stats-value">{{ store.stats.memoryWrites.toLocaleString() }}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">Data written</span>
+              <span class="stats-value">{{ formatBytes(store.stats.memoryWriteBytes) }}</span>
+            </div>
+          </div>
+
+          <!-- Register access -->
+          <div class="stats-section">
+            <div class="section-label">Register Access</div>
+            <div class="stats-row">
+              <span class="stats-label">Read operations</span>
+              <span class="stats-value">{{ store.stats.registerReads.toLocaleString() }}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">Write operations</span>
+              <span class="stats-value">{{ store.stats.registerWrites.toLocaleString() }}</span>
+            </div>
+          </div>
+
+          <div v-if="store.stats.totalInstructions === 0" class="no-errors">
+            Run or debug a program to see execution statistics.
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>

@@ -1,7 +1,7 @@
 import {
   Program, Instruction, Mnemonic, Operand, Register, DataType,
   RegisterValue, VMState, StepResult, DATA_TYPE_RANGE, DATA_TYPE_SIZE,
-  JUMP_MNEMONICS, OverflowMode,
+  JUMP_MNEMONICS, OverflowMode, VMStats, createEmptyStats,
 } from './types';
 import { Memory } from './memory';
 import { RegisterFile } from './registers';
@@ -30,6 +30,19 @@ export class VM {
   private overflowMode: OverflowMode;
   private io: VMIO;
   stdout = '';
+
+  // ── Execution control flags ────────────────────────────
+  private _pauseRequested = false;
+  private _stopRequested = false;
+
+  /** Instructions per second (Infinity = unlimited). */
+  speed: number = Infinity;
+
+  /** Execution statistics — reset on reset(). */
+  stats: VMStats = createEmptyStats();
+
+  /** Optional callback fired after each step in run() for live UI updates. */
+  onAfterStep?: () => void;
 
   constructor(program: Program, io: VMIO) {
     this.program = program;
@@ -67,6 +80,25 @@ export class VM {
     return this.ip;
   }
 
+  // ── Pause / Stop requests ──────────────────────────────
+
+  /** Request the VM to pause at the next opportunity. */
+  requestPause(): void {
+    this._pauseRequested = true;
+  }
+
+  /** Request the VM to stop at the next opportunity.
+   *  Sets the stop flag for the run() loop, and also sets HALTED directly
+   *  if the VM is not currently inside run(). */
+  requestStop(): void {
+    this._stopRequested = true;
+    // Also set HALTED immediately for non-running states (IDLE, PAUSED, ERROR)
+    // so callers that aren't inside a run() loop see the state change.
+    if (this.state !== VMState.RUNNING && this.state !== VMState.WAITING_INPUT) {
+      this.state = VMState.HALTED;
+    }
+  }
+
   /** Reset VM to initial state. */
   reset(): void {
     this.memory = new Memory(this.program.memory.size, this.program.memory.initValue);
@@ -76,12 +108,27 @@ export class VM {
     this.registers.reset();
     this.stdout = '';
     this.state = VMState.IDLE;
+    this._pauseRequested = false;
+    this._stopRequested = false;
+    this.stats = createEmptyStats();
     const startIndex = this.program.labels.get('_start');
     this.ip = startIndex ?? 0;
   }
 
-  /** Execute one instruction. Returns step result. */
+  /** Execute one instruction and pause. Public API for single-stepping. */
   async step(): Promise<StepResult> {
+    return this._step(VMState.PAUSED);
+  }
+
+  /**
+   * Core execution of a single instruction.
+   * @param successState — the state to set after a normal (non-terminal) instruction.
+   *   - `PAUSED` when called from public `step()` (user is single-stepping).
+   *   - `RUNNING` when called from `run()` (continuous execution loop).
+   *   Terminal states (HALTED, ERROR, WAITING_INPUT) are set by instruction
+   *   handlers and always take precedence.
+   */
+  private async _step(successState: VMState): Promise<StepResult> {
     if (this.state === VMState.HALTED || this.state === VMState.ERROR) {
       return { state: this.state, currentLine: this.currentLine };
     }
@@ -104,15 +151,35 @@ export class VM {
       return { state: this.state, currentLine: instr.line, error: msg };
     }
 
+    // Track instruction stats (covers both step() and run() paths)
+    this.stats.totalInstructions++;
+    const m = instr.mnemonic;
+    this.stats.instructionCounts[m] = (this.stats.instructionCounts[m] ?? 0) + 1;
+
     if ((this.state as VMState) === VMState.HALTED) {
       return { state: this.state, currentLine: instr.line, output };
     }
 
-    // After executing one instruction, the VM is paused awaiting
-    // the next action (step, continue, stop). See spec §2 — PAUSED
-    // state: "Execution is suspended at a breakpoint or after a single-step."
-    this.state = VMState.PAUSED;
+    this.state = successState;
     return { state: this.state, currentLine: this.currentLine, output };
+  }
+
+  /**
+   * Yield to the browser event loop for speed control.
+   * - Unlimited speed: yields every ~1000 steps via setTimeout(0).
+   * - Finite speed: delays by 1000/speed ms per instruction.
+   */
+  private throttle(steps: number): Promise<void> {
+    if (!isFinite(this.speed)) {
+      // Unlimited: yield every 1000 steps so the browser can process events
+      if (steps % 1000 === 0) {
+        return new Promise(r => setTimeout(r, 0));
+      }
+      return Promise.resolve();
+    }
+    // Finite speed: delay between instructions
+    const delay = 1000 / this.speed;
+    return new Promise(r => setTimeout(r, delay));
   }
 
   /** Run until HALT, error, or breakpoint callback returns true.
@@ -122,11 +189,25 @@ export class VM {
    */
   async run(shouldPause?: (line: number) => boolean, skipFirstCheck = false): Promise<StepResult> {
     this.state = VMState.RUNNING;
+    this._pauseRequested = false;
+    this._stopRequested = false;
     let lastResult: StepResult = { state: this.state, currentLine: this.currentLine };
     let steps = 0;
     const MAX_STEPS = 1_000_000; // safety limit
 
     while (steps < MAX_STEPS) {
+      // ── Check pause/stop requests ────────────────────────
+      if (this._stopRequested) {
+        this._stopRequested = false;
+        this.state = VMState.HALTED;
+        return { state: VMState.HALTED, currentLine: this.currentLine };
+      }
+      if (this._pauseRequested) {
+        this._pauseRequested = false;
+        this.state = VMState.PAUSED;
+        return { state: VMState.PAUSED, currentLine: this.currentLine };
+      }
+
       // Check breakpoint before executing (skip the first check when resuming
       // from a breakpoint via continue(), to avoid re-pausing on the same line).
       if (shouldPause && this.currentLine !== null && shouldPause(this.currentLine)
@@ -135,18 +216,28 @@ export class VM {
         return { state: VMState.PAUSED, currentLine: this.currentLine };
       }
 
-      // step() sets state to PAUSED after normal execution;
-      // override back to RUNNING so the loop continues.
-      this.state = VMState.RUNNING;
-      lastResult = await this.step();
+      const instr = this.ip < this.program.instructions.length
+        ? this.program.instructions[this.ip]
+        : null;
 
-      // If step resulted in anything other than PAUSED (i.e. HALTED, ERROR,
+      // _step(RUNNING) keeps state as RUNNING after normal execution,
+      // so the loop continues naturally without state overrides.
+      lastResult = await this._step(VMState.RUNNING);
+
+      // Notify listener (for live UI updates)
+      this.onAfterStep?.();
+
+      // If _step resulted in anything other than RUNNING (i.e. HALTED, ERROR,
       // WAITING_INPUT), stop the loop — those are terminal/blocking states.
-      if (lastResult.state !== VMState.PAUSED) break;
+      if (lastResult.state !== VMState.RUNNING) break;
+
+      // ── Speed throttle / yield ───────────────────────────
+      await this.throttle(steps);
+
       steps++;
     }
 
-    if (steps >= MAX_STEPS && (this.state === VMState.RUNNING || this.state === VMState.PAUSED)) {
+    if (steps >= MAX_STEPS && this.state === VMState.RUNNING) {
       this.state = VMState.ERROR;
       return { state: VMState.ERROR, currentLine: this.currentLine, error: 'Execution limit exceeded (infinite loop?)' };
     }
@@ -184,6 +275,7 @@ export class VM {
       // MOV reg, ...
       const value = this.resolveSource(src, line);
       this.registers.set(dst.reg, value);
+      this.stats.registerWrites++;
       // Update flags on MOV
       const numVal = value.type === 'char' ? value.value - 32 : value.value;
       this.registers.updateFlags(numVal, false);
@@ -197,11 +289,13 @@ export class VM {
         if (dataType === DataType.CHAR) {
           if (regVal.type !== 'char') throw new TypeMismatchError(line);
           this.memory.writeChar(address, regVal.value, line);
+          this.trackMemoryWrite(DataType.CHAR);
         } else if (dataType === DataType.TEXT) {
           throw new RuntimeError('Cannot MOV to TEXT with register', line);
         } else {
           if (regVal.type !== 'integer') throw new TypeMismatchError(line);
           const { overflow } = this.memory.writeInteger(address, dataType, regVal.value, line);
+          this.trackMemoryWrite(dataType);
           this.registers.updateFlags(regVal.value, overflow);
           this.checkOverflowHalt(overflow, line);
         }
@@ -210,11 +304,13 @@ export class VM {
           throw new TypeMismatchError(line); // MOV CHAR [addr], imm is forbidden
         }
         const { overflow } = this.memory.writeInteger(address, dataType, src.value, line);
+        this.trackMemoryWrite(dataType);
         this.registers.updateFlags(src.value, overflow);
         this.checkOverflowHalt(overflow, line);
       } else if (src.kind === 'char_immediate') {
         if (dataType !== DataType.CHAR) throw new TypeMismatchError(line);
         this.memory.writeChar(address, src.value.charCodeAt(0), line);
+        this.trackMemoryWrite(DataType.CHAR);
       } else {
         throw new RuntimeError('Invalid MOV operands', line);
       }
@@ -259,6 +355,7 @@ export class VM {
         const overflow = mathResult < range[0] || mathResult > range[1];
         const clamped = Math.max(range[0], Math.min(range[1], mathResult));
         this.registers.set(dst.reg, { type: 'char', value: clamped });
+        this.stats.registerWrites++;
         this.registers.updateFlags(mathResult - 32, overflow); // relative to ASCII space
         this.checkOverflowHalt(overflow, line);
       } else {
@@ -267,6 +364,7 @@ export class VM {
         const mathResult = op(regVal.value, srcVal.value);
         // No specific type constraint for register integers; overflow check happens on write
         this.registers.set(dst.reg, { type: 'integer', value: mathResult });
+        this.stats.registerWrites++;
         this.registers.updateFlags(mathResult, false);
       }
     } else if (dst.kind === 'memory') {
@@ -281,8 +379,10 @@ export class VM {
       let currentValue: number;
       if (dataType === DataType.CHAR) {
         currentValue = this.memory.readChar(address, line);
+        this.trackMemoryRead(DataType.CHAR);
       } else {
         currentValue = this.memory.readInteger(address, dataType, line);
+        this.trackMemoryRead(dataType);
       }
 
       // Resolve source
@@ -305,10 +405,12 @@ export class VM {
         const overflow = mathResult < range[0] || mathResult > range[1];
         const clamped = Math.max(range[0], Math.min(range[1], mathResult));
         this.memory.writeChar(address, clamped, line);
+        this.trackMemoryWrite(DataType.CHAR);
         this.registers.updateFlags(mathResult - 32, overflow);
         this.checkOverflowHalt(overflow, line);
       } else {
         const { overflow } = this.memory.writeInteger(address, dataType, mathResult, line);
+        this.trackMemoryWrite(dataType);
         this.registers.updateFlags(mathResult, overflow);
         this.checkOverflowHalt(overflow, line);
       }
@@ -351,13 +453,17 @@ export class VM {
       case 'memory': {
         if (op.dataType === DataType.CHAR) {
           const addr = this.resolveAddress(op.address, line);
-          return { type: 'char', value: this.memory.readChar(addr, line) };
+          const val = this.memory.readChar(addr, line);
+          this.trackMemoryRead(DataType.CHAR);
+          return { type: 'char', value: val };
         }
         if (op.dataType === DataType.TEXT) {
           throw new RuntimeError('TEXT is not supported in CMP', line);
         }
         const addr = this.resolveAddress(op.address, line);
-        return { type: 'integer', value: this.memory.readInteger(addr, op.dataType, line) };
+        const val = this.memory.readInteger(addr, op.dataType, line);
+        this.trackMemoryRead(op.dataType);
+        return { type: 'integer', value: val };
       }
       default:
         throw new RuntimeError('Invalid CMP operand', line);
@@ -430,7 +536,9 @@ export class VM {
       if (maxLen !== undefined && text.length > maxLen - 1) {
         text = text.substring(0, maxLen - 1);
       }
-      this.memory.writeText(address, text + '$', line);
+      const storedText = text + '$';
+      this.memory.writeText(address, storedText, line);
+      this.trackMemoryWriteBytes(storedText.length);
       this.registers.updateFlags(0, false);
     } else if (dataType === DataType.CHAR) {
       const charCode = input.length > 0 ? input.charCodeAt(0) : 32;
@@ -438,12 +546,14 @@ export class VM {
       const overflow = charCode < range[0] || charCode > range[1];
       const clamped = Math.max(range[0], Math.min(range[1], charCode));
       this.memory.writeChar(address, clamped, line);
+      this.trackMemoryWrite(DataType.CHAR);
       this.registers.updateFlags(clamped - 32, overflow);
       this.checkOverflowHalt(overflow, line);
     } else {
       // WORD / DWORD / QWORD
       const num = parseInt(input, 10) || 0;
       const { overflow } = this.memory.writeInteger(address, dataType, num, line);
+      this.trackMemoryWrite(dataType);
       this.registers.updateFlags(num, overflow);
       this.checkOverflowHalt(overflow, line);
     }
@@ -466,11 +576,14 @@ export class VM {
 
         if (dataType === DataType.TEXT) {
           output = this.memory.readText(address, line);
+          this.trackMemoryReadBytes(output.length);
         } else if (dataType === DataType.CHAR) {
           output = String.fromCharCode(this.memory.readChar(address, line));
+          this.trackMemoryRead(DataType.CHAR);
         } else {
           // WORD / DWORD / QWORD — output without leading zeros and '+'
           const num = this.memory.readInteger(address, dataType, line);
+          this.trackMemoryRead(dataType);
           output = num.toString();
         }
       } else if (op.kind === 'register') {
@@ -525,12 +638,16 @@ export class VM {
       case 'memory': {
         const addr = this.resolveAddress(op.address, line);
         if (op.dataType === DataType.CHAR) {
-          return { type: 'char', value: this.memory.readChar(addr, line) };
+          const val = this.memory.readChar(addr, line);
+          this.trackMemoryRead(DataType.CHAR);
+          return { type: 'char', value: val };
         }
         if (op.dataType === DataType.TEXT) {
           throw new RuntimeError('Cannot use TEXT as register source', line);
         }
-        return { type: 'integer', value: this.memory.readInteger(addr, op.dataType, line) };
+        const val = this.memory.readInteger(addr, op.dataType, line);
+        this.trackMemoryRead(op.dataType);
+        return { type: 'integer', value: val };
       }
       default:
         throw new RuntimeError('Invalid source operand', line);
@@ -557,6 +674,7 @@ export class VM {
     if (val === null) {
       throw new RuntimeError(`Register ${reg} is not initialized`, line);
     }
+    this.stats.registerReads++;
     return val;
   }
 
@@ -568,5 +686,27 @@ export class VM {
       this.state = VMState.ERROR;
       throw new TypeOverflowError(line);
     }
+  }
+
+  // ── Stats tracking helpers ────────────────────────────────
+
+  private trackMemoryRead(dataType: DataType): void {
+    this.stats.memoryReads++;
+    this.stats.memoryReadBytes += DATA_TYPE_SIZE[dataType] || 0;
+  }
+
+  private trackMemoryReadBytes(bytes: number): void {
+    this.stats.memoryReads++;
+    this.stats.memoryReadBytes += bytes;
+  }
+
+  private trackMemoryWrite(dataType: DataType): void {
+    this.stats.memoryWrites++;
+    this.stats.memoryWriteBytes += DATA_TYPE_SIZE[dataType] || 0;
+  }
+
+  private trackMemoryWriteBytes(bytes: number): void {
+    this.stats.memoryWrites++;
+    this.stats.memoryWriteBytes += bytes;
   }
 }

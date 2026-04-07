@@ -718,4 +718,200 @@ _start:
     expect(vm.registers.get('AX' as any)).toBeNull();
     expect(vm.memory.readInteger(0, 'DWORD' as any)).toBe(42); // re-initialized from #data
   });
+
+  // ── Pause / Stop requests ────────────────────────────
+
+  it('requestPause() causes run() to return PAUSED', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 0
+loop:
+    ADD AX, 1
+    JMP loop
+    HALT
+`);
+    // Request pause before run (flag is checked at loop start)
+    // We need to request pause asynchronously after the run starts
+    // Since the loop yields every 1000 steps, we schedule pause before first yield
+    vm.speed = Infinity;
+    setTimeout(() => vm.requestPause(), 0);
+    const result = await vm.run();
+    expect(result.state).toBe(VMState.PAUSED);
+  });
+
+  it('requestStop() causes run() to return HALTED', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 0
+loop:
+    ADD AX, 1
+    JMP loop
+    HALT
+`);
+    vm.speed = Infinity;
+    setTimeout(() => vm.requestStop(), 0);
+    const result = await vm.run();
+    expect(result.state).toBe(VMState.HALTED);
+  });
+
+  it('requestStop() on PAUSED sets HALTED immediately', () => {
+    const { vm } = buildVM(`
+_start:
+    HALT
+`);
+    vm.state = VMState.PAUSED;
+    vm.requestStop();
+    expect(vm.state).toBe(VMState.HALTED);
+  });
+
+  it('requestStop() on IDLE sets HALTED immediately', () => {
+    const { vm } = buildVM(`
+_start:
+    HALT
+`);
+    expect(vm.state).toBe(VMState.IDLE);
+    vm.requestStop();
+    expect(vm.state).toBe(VMState.HALTED);
+  });
+
+  // ── Statistics tracking ──────────────────────────────
+
+  it('stats count total instructions', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 1
+    MOV BX, 2
+    MOV CX, 3
+    HALT
+`);
+    await vm.run();
+    expect(vm.stats.totalInstructions).toBe(4); // 3x MOV + HALT
+  });
+
+  it('stats count instructions per mnemonic', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 1
+    MOV BX, 2
+    ADD AX, BX
+    HALT
+`);
+    await vm.run();
+    expect(vm.stats.instructionCounts['MOV']).toBe(2);
+    expect(vm.stats.instructionCounts['ADD']).toBe(1);
+    expect(vm.stats.instructionCounts['HALT']).toBe(1);
+  });
+
+  it('stats track register reads and writes', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 42
+    MOV BX, AX
+    HALT
+`);
+    await vm.run();
+    // MOV AX, 42 → 1 reg write
+    // MOV BX, AX → 1 reg read (AX) + 1 reg write (BX)
+    expect(vm.stats.registerWrites).toBe(2);
+    expect(vm.stats.registerReads).toBe(1);
+  });
+
+  it('stats track memory reads and writes', async () => {
+    const { vm } = buildVM(`
+#memory 16
+#data 0, DWORD 0
+_start:
+    MOV DWORD [0], 42
+    MOV AX, DWORD [0]
+    HALT
+`);
+    await vm.run();
+    expect(vm.stats.memoryWrites).toBe(1);
+    expect(vm.stats.memoryWriteBytes).toBe(4); // DWORD = 4 cells
+    expect(vm.stats.memoryReads).toBe(1);
+    expect(vm.stats.memoryReadBytes).toBe(4);
+  });
+
+  it('stats track TEXT memory writes', async () => {
+    const { vm } = buildVM(`
+#memory 32
+#data 0, DWORD 0
+_start:
+    READ TEXT [0]
+    HALT
+`, ['Hello']);
+    await vm.run();
+    // "Hello" + '$' = 6 cells
+    expect(vm.stats.memoryWrites).toBe(1);
+    expect(vm.stats.memoryWriteBytes).toBe(6);
+  });
+
+  it('stats track TEXT memory reads via WRITE', async () => {
+    const { vm } = buildVM(`
+#memory 32
+#data 0, TEXT "Hi$"
+_start:
+    WRITE TEXT [0]
+    HALT
+`);
+    await vm.run();
+    expect(vm.stats.memoryReads).toBe(1);
+    expect(vm.stats.memoryReadBytes).toBe(2); // "Hi" (2 chars, $ excluded from output)
+  });
+
+  it('stats reset on vm.reset()', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 1
+    HALT
+`);
+    await vm.run();
+    expect(vm.stats.totalInstructions).toBe(2);
+
+    vm.reset();
+    expect(vm.stats.totalInstructions).toBe(0);
+    expect(vm.stats.registerWrites).toBe(0);
+    expect(vm.stats.registerReads).toBe(0);
+    expect(vm.stats.memoryReads).toBe(0);
+    expect(vm.stats.memoryWrites).toBe(0);
+  });
+
+  // ── Speed control ────────────────────────────────────
+
+  it('speed defaults to Infinity', () => {
+    const { vm } = buildVM(`
+_start:
+    HALT
+`);
+    expect(vm.speed).toBe(Infinity);
+  });
+
+  it('speed can be set and affects throttle behavior', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 1
+    MOV BX, 2
+    HALT
+`);
+    vm.speed = 1000; // 1000 IPS
+    await vm.run();
+    expect(vm.state).toBe(VMState.HALTED);
+  });
+
+  // ── onAfterStep callback ─────────────────────────────
+
+  it('onAfterStep is called for each instruction in run()', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 1
+    MOV BX, 2
+    HALT
+`);
+    let callCount = 0;
+    vm.onAfterStep = () => callCount++;
+    await vm.run();
+    // 3 instructions (MOV, MOV, HALT) — callback called 3 times
+    // But HALT breaks the loop, callback fires after step (before break check)
+    expect(callCount).toBe(3);
+  });
 });

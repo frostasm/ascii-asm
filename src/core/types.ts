@@ -206,6 +206,53 @@ export interface DebugState {
   breakpoints: Set<number>;
 }
 
+// ─── VM Statistics ─────────────────────────────────────────────
+
+export interface VMStats {
+  /** Total number of instructions executed. */
+  totalInstructions: number;
+  /** Count of executed instructions per mnemonic. */
+  instructionCounts: Record<string, number>;
+  /** Total number of memory read operations. */
+  memoryReads: number;
+  /** Total bytes (cells) read from memory. */
+  memoryReadBytes: number;
+  /** Total number of memory write operations. */
+  memoryWrites: number;
+  /** Total bytes (cells) written to memory. */
+  memoryWriteBytes: number;
+  /** Total number of register read operations. */
+  registerReads: number;
+  /** Total number of register write operations. */
+  registerWrites: number;
+}
+
+/** Create a zeroed-out VMStats object. */
+export function createEmptyStats(): VMStats {
+  return {
+    totalInstructions: 0,
+    instructionCounts: {},
+    memoryReads: 0,
+    memoryReadBytes: 0,
+    memoryWrites: 0,
+    memoryWriteBytes: 0,
+    registerReads: 0,
+    registerWrites: 0,
+  };
+}
+
+// ─── VM Speed Presets ──────────────────────────────────────────
+
+export const SPEED_PRESETS: { label: string; value: number }[] = [
+  { label: '1 IPS', value: 1 },
+  { label: '5 IPS', value: 5 },
+  { label: '10 IPS', value: 10 },
+  { label: '50 IPS', value: 50 },
+  { label: '100 IPS', value: 100 },
+  { label: '500 IPS', value: 500 },
+  { label: 'Unlimited', value: Infinity },
+];
+
 // ─── Step Result ───────────────────────────────────────────────
 
 export interface StepResult {

@@ -13,6 +13,7 @@ import { asciiAsmAutocomplete } from './asciiasm-autocomplete';
 // ── Theme compartment ────────────────────────────────────────
 
 const themeCompartment = new Compartment();
+const readOnlyCompartment = new Compartment();
 
 function buildThemeExtension(theme: AppTheme) {
   return theme === 'dark' ? oneDark : [];
@@ -155,6 +156,7 @@ export function createEditor(
       asciiAsmLanguage,
       asciiAsmLinter(),
       asciiAsmAutocomplete(),
+      readOnlyCompartment.of(EditorState.readOnly.of(false)),
       breakpointState,
       breakpointGutter(callbacks.onBreakpointToggle),
       activeDebugLineState,
@@ -222,6 +224,16 @@ export function setDebugLine(view: EditorView, line: number | null, mode: DebugL
 export function setEditorTheme(view: EditorView, theme: AppTheme): void {
   view.dispatch({
     effects: themeCompartment.reconfigure(buildThemeExtension(theme)),
+  });
+}
+
+/**
+ * Toggle the editor between read-only and editable.
+ * Used to lock the editor during debugging/running.
+ */
+export function setEditorReadOnly(view: EditorView, readOnly: boolean): void {
+  view.dispatch({
+    effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(readOnly)),
   });
 }
 

@@ -642,13 +642,351 @@ referring to it by name: `MOV AX, DWORD [x]`.
 
 ---
 
-# Part 3 — Debugger Specification
+# Part 3 — VM Specification
 
 ## 3.1 Overview
 
+The AsciiAsm Virtual Machine (`core/vm.ts`) is a stack-less, register-based interpreter that
+executes a parsed `Program` one instruction at a time. It relies on three supporting modules:
+
+| Module | File | Responsibility |
+|--------|------|----------------|
+| **VM** | `core/vm.ts` | Instruction execution, state machine, I/O delegation |
+| **Memory** | `core/memory.ts` | Linear array of ASCII cells (read/write by type) |
+| **RegisterFile** | `core/registers.ts` | 4 general-purpose registers + FLAGS |
+| **Errors** | `core/errors.ts` | Runtime / parse error hierarchy |
+
+The VM is a **pure-logic** module — it has zero UI dependencies and communicates
+with the outside world exclusively through the `VMIO` callback interface.
+
+## 3.2 VMIO — I/O Interface
+
+```typescript
+export interface VMIO {
+  requestInput(prompt?: string): Promise<string>;
+  writeOutput(text: string): void;
+}
+```
+
+| Method | Called when… |
+|--------|-------------|
+| `requestInput` | A `READ` instruction needs user input. The optional `prompt` comes from the `"prompt"` operand. Returns a `Promise` so the host environment can show a dialog asynchronously. |
+| `writeOutput` | A `WRITE` / `WRITELN` instruction produces output. The VM also appends the text to its internal `stdout` accumulator. |
+
+## 3.3 VM States
+
+The VM operates in one of six mutually exclusive states (defined in `core/types.ts`):
+
+| State | Description |
+|-------|-------------|
+| `IDLE` | Initial state after construction or `reset()`. No instruction has been executed. |
+| `RUNNING` | The VM is actively executing instructions inside `run()`. |
+| `PAUSED` | Execution is suspended — either a breakpoint was hit or `step()` completed normally. The user can inspect all state. |
+| `WAITING_INPUT` | A `READ` instruction is in progress; the VM awaits the host's `requestInput()` response. |
+| `HALTED` | The program terminated normally via a `HALT` instruction, or was forcibly stopped. |
+| `ERROR` | A runtime error occurred. The error message is available in the `StepResult`. |
+
+## 3.4 State Machine Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> RUNNING       : run()
+    IDLE --> PAUSED        : step() — normal instruction
+
+    RUNNING --> PAUSED         : step() — normal instruction (inside run loop)
+    RUNNING --> PAUSED         : shouldPause() breakpoint hit
+    RUNNING --> HALTED         : HALT instruction
+    RUNNING --> ERROR          : runtime error
+    RUNNING --> WAITING_INPUT  : READ instruction
+
+    WAITING_INPUT --> RUNNING  : input provided
+
+    PAUSED --> RUNNING         : run() resumes loop
+    PAUSED --> HALTED          : step() executes HALT
+    PAUSED --> ERROR           : step() causes error
+
+    HALTED --> IDLE            : reset()
+    ERROR  --> IDLE            : reset()
+```
+
+## 3.5 Constructor & Initialization
+
+```
+new VM(program: Program, io: VMIO)
+```
+
+1. Store `program` reference and `io` callbacks.
+2. Set `overflowMode` from `program.overflow` (`'flag'` or `'halt'`).
+3. Allocate `Memory` with `program.memory.size` and optional `initValue`.
+4. Apply all `#data` directives to memory via `memory.initializeData()`.
+5. Create a fresh `RegisterFile` (all registers `null`, all flags `false`).
+6. Set instruction pointer (`ip`) to the `_start` label index (or `0`).
+7. State = `IDLE`.
+
+## 3.6 Core Methods
+
+### 3.6.1 `step()` — Execute One Instruction
+
+```typescript
+async step(): Promise<StepResult>
+```
+
+Behavior:
+
+1. If state is `HALTED` or `ERROR` → return immediately (no-op).
+2. If `ip` is past the last instruction → set `ERROR` ("Unexpected end of program (missing HALT)").
+3. Set state to `RUNNING`.
+4. Execute the instruction at `ip` via `executeInstruction()`.
+5. If the instruction threw → set `ERROR`, return the error message.
+6. If state became `HALTED` (via `HALT`) → return `HALTED`.
+7. Otherwise → set state to `PAUSED`, return the **next** instruction's line as `currentLine`.
+
+**Key design decision:** after normal execution, `step()` always transitions to `PAUSED`.
+This ensures the Debugger/Store can check `canStep` without special handling.
+The `run()` loop overrides `PAUSED → RUNNING` before each iteration.
+
+### 3.6.2 `run()` — Continuous Execution
+
+```typescript
+async run(shouldPause?: (line: number) => boolean, skipFirstCheck = false): Promise<StepResult>
+```
+
+Behavior:
+
+1. Set state to `RUNNING`.
+2. Loop (up to `MAX_STEPS = 1,000,000`):
+   a. **Breakpoint check** — if `shouldPause(currentLine)` returns `true`, set state to `PAUSED` and return. When `skipFirstCheck` is `true`, this check is skipped on iteration 0 (used by Debugger's `continue()` to avoid re-pausing on the same line).
+   b. Override state back to `RUNNING` (since `step()` sets `PAUSED`).
+   c. Call `step()`.
+   d. If `step()` returned anything other than `PAUSED` (i.e. `HALTED`, `ERROR`, `WAITING_INPUT`) → break.
+3. If the step counter reached `MAX_STEPS` → set `ERROR` ("Execution limit exceeded (infinite loop?)").
+4. Return the last `StepResult`.
+
+### 3.6.3 `reset()` — Restore Initial State
+
+```typescript
+reset(): void
+```
+
+1. Re-allocate `Memory` (same size/init as constructor).
+2. Re-apply all `#data` directives.
+3. Reset `RegisterFile` (all registers `null`, all flags `false`).
+4. Clear `stdout`.
+5. Set state to `IDLE`.
+6. Restore `ip` to `_start` label index.
+
+## 3.7 Instruction Dispatch
+
+`executeInstruction(instr)` dispatches based on `instr.mnemonic`:
+
+| Mnemonic | Handler method | Advances IP | Updates FLAGS |
+|----------|---------------|:-----------:|:------------:|
+| `MOV` | `executeMov()` | ✓ | Yes (on overflow) |
+| `ADD` | `executeAdd()` → `executeArithmetic()` | ✓ | Yes |
+| `SUB` | `executeSub()` → `executeArithmetic()` | ✓ | Yes |
+| `CMP` | `executeCmp()` | ✓ | Yes |
+| `JMP/JE/JNE/JL/JLE/JG/JGE/JO/JNO` | `executeJump()` | Sets IP to target or ✓ | No |
+| `READ` | `executeRead()` | ✓ | Yes |
+| `WRITE` | `executeWrite(false)` | ✓ | No |
+| `WRITELN` | `executeWrite(true)` | ✓ | No |
+| `HALT` | `executeHalt()` | No (state → `HALTED`) | No |
+
+"✓" under "Advances IP" means `this.ip++` at the end of the handler.
+
+## 3.8 Instruction Handlers — Details
+
+### 3.8.1 `executeMov(instr)`
+
+Copies a value from source to destination. Combinations:
+
+| Destination | Source | Behavior |
+|------------|--------|----------|
+| `reg` | `reg2` | Copy value + type |
+| `reg` | `imm` | Register type → integer |
+| `reg` | `CHAR 'c'` | Register type → char |
+| `reg` | `TYPE [addr]` | Register type → per TYPE |
+| `TYPE [addr]` | `reg` | Type must match (CHAR↔CHAR, integer↔integer) |
+| `TYPE [addr]` | `imm` | TYPE must be WORD/DWORD/QWORD (not CHAR) |
+| `CHAR [addr]` | `'c'` | Write character literal |
+
+Flags are updated when memory writes overflow.
+
+### 3.8.2 `executeArithmetic(instr, op)`
+
+Shared by `ADD` and `SUB`. The `op` parameter is `(a, b) => a + b` or `(a, b) => a - b`.
+
+| Destination | Source | Rule |
+|------------|--------|------|
+| `reg(integer)` | `reg(integer)` / `imm` | integer ± integer = integer |
+| `reg(CHAR)` | `imm` / `reg(integer)` | CHAR ± integer = CHAR (ASCII shift, clamped 32–126) |
+| `TYPE [addr]` | `reg(integer)` / `imm` | Read → compute → write back; overflow handled per type |
+
+Forbidden: CHAR ± CHAR, integer ± CHAR (src is CHAR).
+
+### 3.8.3 `executeCmp(instr)`
+
+Computes `val1 - val2` and updates FLAGS. Does **not** store the result or advance any values.
+Both operands must be the same category (CHAR↔CHAR or integer↔integer).
+
+### 3.8.4 `executeJump(instr)`
+
+Resolves the label operand to an instruction index. Evaluates the jump condition from FLAGS:
+
+| Mnemonic | Condition |
+|----------|-----------|
+| `JMP` | Always |
+| `JE` | `ZF` |
+| `JNE` | `!ZF` |
+| `JL` | `SF && !ZF` |
+| `JLE` | `SF \|\| ZF` |
+| `JG` | `!SF && !ZF` |
+| `JGE` | `!SF \|\| ZF` |
+| `JO` | `OF` |
+| `JNO` | `!OF` |
+
+If the condition is true, `ip` is set to the target index. Otherwise `ip++`.
+
+### 3.8.5 `executeRead(instr)`
+
+1. Set state to `WAITING_INPUT`.
+2. Call `io.requestInput(prompt)` — `await`s the host response.
+3. Set state back to `RUNNING`.
+4. Parse and store the input value in memory according to the operand's `DataType`.
+5. For `TEXT`: optional `imm` operand limits max input length (`imm - 1` chars + `$`).
+6. Update FLAGS (overflow checked for numeric and CHAR types).
+
+### 3.8.6 `executeWrite(instr, newline)`
+
+Formats the operand value as a string and calls `io.writeOutput()`.
+Appends `\n` if `newline` is `true` (`WRITELN`).
+The output is also accumulated in `this.stdout`.
+
+### 3.8.7 `executeHalt()`
+
+Sets `this.state = VMState.HALTED`. Does **not** increment `ip`.
+
+## 3.9 Value Resolution Helpers
+
+| Helper | Purpose |
+|--------|---------|
+| `resolveSource(op, line)` | Converts any source operand to a `RegisterValue` (`{ type, value }`). Handles register, immediate, char_immediate, and memory operands. |
+| `resolveAddress(addr, line)` | Converts a register or numeric address to a number. If the address comes from a register, the register must contain an integer. |
+| `getRegisterValue(reg, line)` | Returns the register's value or throws `RuntimeError` if uninitialized (`null`). |
+| `checkOverflowHalt(overflow, line)` | If `overflowMode === 'halt'` and `overflow` is `true`, sets state to `ERROR` and throws `TypeOverflowError`. |
+
+## 3.10 Memory Model (`core/memory.ts`)
+
+### 3.10.1 Construction
+
+```typescript
+new Memory(size: number, initValue?: number)
+```
+
+- If `initValue` is provided, all cells are filled with that ASCII code.
+- Otherwise, cells are filled with **random** printable ASCII (32–126) — memory is uninitialized.
+
+### 3.10.2 Bounds Checking
+
+Every read/write operation calls `checkBounds(address, count, line)`.
+Out-of-bounds access throws `InvalidMemoryAccessError`.
+
+### 3.10.3 Type-Specific Access
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `readChar(addr)` / `writeChar(addr, val)` | CHAR | Single cell, raw ASCII code |
+| `readInteger(addr, type)` / `writeInteger(addr, type, val)` | WORD/DWORD/QWORD | Multi-cell, ASCII-encoded signed integer |
+| `readText(addr)` / `writeText(addr, text)` | TEXT | Variable-length, reads until `$` terminator |
+| `getCell(addr)` / `setCell(addr, val)` | Raw | Direct cell access |
+
+### 3.10.4 Integer Storage Details
+
+`writeInteger` checks the value against `DATA_TYPE_RANGE`. On overflow:
+- Truncates to least significant digits (preserving sign).
+- Returns `{ overflow: true }`.
+
+Formatting: negative values start with `'-'` followed by zero-padded digits.
+Positive values are zero-padded to fill the full cell width.
+
+### 3.10.5 Snapshots
+
+`getSnapshot()` returns a copy of the cell array (`number[]`) for UI display.
+
+## 3.11 Register File (`core/registers.ts`)
+
+### 3.11.1 Registers
+
+Four general-purpose registers: `AX`, `BX`, `CX`, `DX`.
+Each holds a `RegisterValue | null`:
+
+```typescript
+type RegisterValue = { type: 'char'; value: number }    // ASCII code 32–126
+                   | { type: 'integer'; value: number }; // signed integer
+```
+
+Registers start as `null` (uninitialized). Accessing an uninitialized register throws `RuntimeError`.
+
+### 3.11.2 FLAGS
+
+```typescript
+interface Flags { ZF: boolean; SF: boolean; OF: boolean; }
+```
+
+`updateFlags(mathResult, overflow)` sets:
+- `ZF` — `mathResult === 0`
+- `SF` — `mathResult < 0`
+- `OF` — `overflow` parameter
+
+### 3.11.3 Snapshots
+
+- `getSnapshot()` → `Record<string, RegisterValue | null>` (for UI)
+- `getFlagsSnapshot()` → `Flags` (copy)
+
+## 3.12 Error Hierarchy (`core/errors.ts`)
+
+```
+AsciiAsmError (base)
+├── ParseError
+│   ├── MissingHaltError
+│   ├── MissingStartLabelError
+│   └── UndefinedLabelError
+└── RuntimeError
+    ├── TypeMismatchError
+    ├── TypeOverflowError
+    └── InvalidMemoryAccessError
+```
+
+All errors carry a `line` number (1-based source line). `ParseError` also carries `col`.
+
+## 3.13 StepResult
+
+Every `step()` and `run()` call returns:
+
+```typescript
+interface StepResult {
+  state: VMState;
+  currentLine: number | null;
+  output?: string;   // text written to stdout in this step
+  error?: string;    // error message if state is ERROR
+}
+```
+
+## 3.14 Safety Limit
+
+`run()` enforces a maximum of **1,000,000** iterations. Exceeding this produces
+`ERROR` with the message `"Execution limit exceeded (infinite loop?)"`.
+
+---
+
+# Part 4 — Debugger Specification
+
+## 4.1 Overview
+
 The AsciiAsm debugger wraps the Virtual Machine (VM) with breakpoint management and step-by-step execution control. It follows a finite-state-machine (FSM) model where the current **VMState** determines which user actions are available.
 
-### 3.1.1 Architecture Layers
+### 4.1.1 Architecture Layers
 
 | Layer | Module | Responsibility |
 |-------|--------|----------------|
@@ -660,7 +998,7 @@ The AsciiAsm debugger wraps the Virtual Machine (VM) with breakpoint management 
 
 ---
 
-## 3.2 VM States
+## 4.2 VM States
 
 The VM operates in one of six mutually exclusive states:
 
@@ -675,7 +1013,7 @@ The VM operates in one of six mutually exclusive states:
 
 ---
 
-## 3.3 State Machine Diagram
+## 4.3 State Machine Diagram
 
 ```mermaid
 stateDiagram-v2
@@ -714,9 +1052,9 @@ stateDiagram-v2
 
 ---
 
-## 3.4 User Actions
+## 4.4 User Actions
 
-### 3.4.1 Action Definitions
+### 4.4.1 Action Definitions
 
 | Action | Hotkey | Description |
 |--------|--------|-------------|
@@ -727,7 +1065,7 @@ stateDiagram-v2
 | **Stop** | `Shift+F5` | Forcibly abort execution. Sets VM state to `HALTED`. Available during `RUNNING`, `PAUSED`, and `WAITING_INPUT`. |
 | **Reset** | `Ctrl+Shift+F5` | Destroy the VM and debugger instances. Clear all reactive state (registers, memory, flags, stdout, errors, debug line highlight). Return to `IDLE`. Always available. |
 
-### 3.4.2 Action Availability Matrix
+### 4.4.2 Action Availability Matrix
 
 | Action | `IDLE` | `RUNNING` | `PAUSED` | `WAITING_INPUT` | `HALTED` | `ERROR` |
 |--------|:------:|:---------:|:--------:|:----------------:|:--------:|:-------:|
@@ -739,7 +1077,7 @@ stateDiagram-v2
 | **Reset** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Toggle Breakpoint** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-### 3.4.3 Action Guard Definitions
+### 4.4.3 Action Guard Definitions
 
 ```
 canRun      = state ∈ { IDLE, HALTED, ERROR }
@@ -750,7 +1088,7 @@ canStop     = state ∈ { RUNNING, PAUSED, WAITING_INPUT }
 reset       — always available (no guard)
 ```
 
-### 3.4.4 F5 Context-Sensitivity
+### 4.4.4 F5 Context-Sensitivity
 
 The `F5` hotkey is context-sensitive:
 
@@ -765,9 +1103,9 @@ This mirrors the familiar VS Code "start or continue" paradigm.
 
 ---
 
-## 3.5 Action Sequences (Detailed)
+## 4.5 Action Sequences (Detailed)
 
-### 3.5.1 `run()` — Full Execution
+### 4.5.1 `run()` — Full Execution
 
 1. Clear `runtimeError` and `stdout`.
 2. Call `buildVM()` → parse source, create VM and Debugger instances, sync breakpoints.
@@ -778,7 +1116,7 @@ This mirrors the familiar VS Code "start or continue" paradigm.
 7. If `StepResult.error` exists → store it in `runtimeError`.
 8. Sync all reactive state from VM → UI updates.
 
-### 3.5.2 `debug()` — Debug Session Start
+### 4.5.2 `debug()` — Debug Session Start
 
 1. Clear `runtimeError` and `stdout`.
 2. Call `buildVM()` → parse source, create VM and Debugger instances.
@@ -792,7 +1130,7 @@ This mirrors the familiar VS Code "start or continue" paradigm.
    - Execution limit (1,000,000 steps) → `ERROR`
 7. Sync state → editor highlights the paused line (if `PAUSED`).
 
-### 3.5.3 `stepOver()` — Single Step
+### 4.5.3 `stepOver()` — Single Step
 
 1. If no debugger instance exists (state = `IDLE` or after reset):
    - Call `buildVM()`. If parse errors → abort.
@@ -806,20 +1144,20 @@ This mirrors the familiar VS Code "start or continue" paradigm.
      - `READ` → `WAITING_INPUT` (browser prompt appears)
 3. Sync state → editor highlights the current/next line to execute.
 
-### 3.5.4 `continueExecution()` — Resume from Breakpoint
+### 4.5.4 `continueExecution()` — Resume from Breakpoint
 
 1. Requires `dbg` to exist (only available when `PAUSED`).
 2. Call `dbg.continue()` → internally calls `vm.run(shouldPause)`.
 3. VM runs until next breakpoint, `HALT`, or error (same as `debug()` but without rebuilding).
 4. Sync state.
 
-### 3.5.5 `stop()` — Abort Execution
+### 4.5.5 `stop()` — Abort Execution
 
 1. Requires `dbg` to exist.
 2. Call `dbg.stop()` → sets `vm.state = HALTED`.
 3. Sync state → editor debug line highlight remains at last position.
 
-### 3.5.6 `reset()` — Full Teardown
+### 4.5.6 `reset()` — Full Teardown
 
 1. If `dbg` exists, call `dbg.reset()` (resets VM internals).
 2. Clear all reactive state:
@@ -837,9 +1175,9 @@ This mirrors the familiar VS Code "start or continue" paradigm.
 
 ---
 
-## 3.6 Breakpoint Management
+## 4.6 Breakpoint Management
 
-### 3.6.1 Breakpoint Storage
+### 4.6.1 Breakpoint Storage
 
 Breakpoints are stored in two synchronized locations:
 
@@ -848,13 +1186,13 @@ Breakpoints are stored in two synchronized locations:
 | `useAppStore.breakpoints` | `reactive(Set<number>)` | UI-side reactive set; persists across VM rebuilds |
 | `Debugger.breakpoints` | `Set<number>` | Core-side set; used during execution to check pause conditions |
 
-### 3.6.2 Synchronization
+### 4.6.2 Synchronization
 
 - **UI → Core**: On `buildVM()` and `debug()`, the store iterates over `breakpoints` and calls `dbg.addBreakpoint(line)` for each.
 - **User toggle**: Clicking the editor gutter calls `onBreakpointToggle(line)`, which adds/removes the line from the store's `breakpoints` set. The editor's `breakpointState` (CodeMirror `StateField`) manages the visual marker independently.
 - Breakpoints are **1-based source line numbers**.
 
-### 3.6.3 Breakpoint Behavior During Execution
+### 4.6.3 Breakpoint Behavior During Execution
 
 When `vm.run(shouldPause, skipFirstCheck)` is called:
 - Before each instruction, the VM checks `shouldPause(currentLine)`.
@@ -862,13 +1200,13 @@ When `vm.run(shouldPause, skipFirstCheck)` is called:
 - `continue()` passes `skipFirstCheck = true` — the check is skipped on step 0 to avoid re-pausing on the line the VM is already paused on.
 - If `shouldPause` returns `true` (and the check is not skipped) → VM sets state to `PAUSED` and returns immediately.
 
-### 3.6.4 Toggle Availability
+### 4.6.4 Toggle Availability
 
 Breakpoints can be toggled at **any time**, regardless of VM state. However, breakpoints toggled during an active debug session are **not synced** to the core Debugger until the next `buildVM()` or `debug()` call.
 
 ---
 
-## 3.7 State Inspection (Debug Panel)
+## 4.7 State Inspection (Debug Panel)
 
 When the VM is in `PAUSED` state, the following data is available for inspection:
 
@@ -885,9 +1223,9 @@ State is synced to reactive Vue refs via `updateStateFromVM()` after every actio
 
 ---
 
-## 3.8 Editor Integration
+## 4.8 Editor Integration
 
-### 3.8.1 Debug Line Highlight
+### 4.8.1 Debug Line Highlight
 
 - The editor uses a CodeMirror `StateField` (`activeDebugLineState`) to track the currently paused line.
 - `setDebugLine(view, lineNumber)` dispatches an effect to update the field.
@@ -895,19 +1233,19 @@ State is synced to reactive Vue refs via `updateStateFromVM()` after every actio
 - A gutter marker (`▶`) appears in the debug gutter beside the active line.
 - When `lineNumber` is `null`, all debug decorations are cleared.
 
-### 3.8.2 Breakpoint Gutter
+### 4.8.2 Breakpoint Gutter
 
 - A dedicated gutter column (`cm-breakpoint-gutter`) is displayed to the left of line numbers.
 - Clicking a gutter element toggles a red dot (`●`) marker on that line.
 - The gutter fires an `onBreakpointToggle(lineNumber)` callback to sync with the store.
 
-### 3.8.3 Editor Read-Only During Debug
+### 4.8.3 Editor Read-Only During Debug
 
 The editor is **not** set to read-only during debugging. Source changes during an active debug session will cause the store's `onChange` callback to re-parse, but the running VM/Debugger continues with the originally compiled program. A `reset()` is required to pick up source changes.
 
 ---
 
-## 3.9 VM Build Pipeline
+## 4.9 VM Build Pipeline
 
 The `buildVM()` function is called by `run()`, `debug()`, and `stepOver()` (on first step). It always creates a **fresh** VM:
 
@@ -925,7 +1263,7 @@ buildVM():
   7. return true
 ```
 
-### 3.9.1 VM Constructor Initialization
+### 4.9.1 VM Constructor Initialization
 
 - Allocate `Memory` with size and optional init value from `#memory` directive.
 - Apply all `#data` directives to memory.
@@ -935,16 +1273,16 @@ buildVM():
 
 ---
 
-## 3.10 Error Handling
+## 4.10 Error Handling
 
-### 3.10.1 Parse Errors
+### 4.10.1 Parse Errors
 
 - Detected during `parseSource()` in `buildVM()`.
 - If any parse errors exist, `buildVM()` returns `false` and no VM is created.
 - Parse errors are displayed in the UI via `parseErrors` reactive ref.
 - The editor linter (`asciiasm-linter.ts`) also shows inline diagnostics.
 
-### 3.10.2 Runtime Errors
+### 4.10.2 Runtime Errors
 
 - Caught during `vm.step()` execution.
 - The VM transitions to `ERROR` state.
@@ -956,23 +1294,23 @@ buildVM():
   - `Unexpected end of program (missing HALT)`
   - `Execution limit exceeded (infinite loop?)`
 
-### 3.10.3 Safety Limit
+### 4.10.3 Safety Limit
 
 The VM enforces a maximum of **1,000,000** steps per `run()` call. Exceeding this limit produces an `ERROR` with the message "Execution limit exceeded (infinite loop?)".
 
 ---
 
-## 3.11 Hotkey Map
+## 4.11 Hotkey Map
 
 | Hotkey | Action | Guard |
 |--------|--------|-------|
 | `Ctrl+F5` | `run()` | `canRun` |
-| `F5` | `debug()` / `continueExecution()` | Context-sensitive (see §3.4.4) |
+| `F5` | `debug()` / `continueExecution()` | Context-sensitive (see §4.4.4) |
 | `F10` | `stepOver()` | `canStep` |
 | `Shift+F5` | `stop()` | `canStop` |
 | `Ctrl+Shift+F5` | `reset()` | Always |
 
-### 3.11.1 Hotkey Priority
+### 4.11.1 Hotkey Priority
 
 Hotkeys are matched in this order to resolve overlapping key combinations:
 
@@ -984,7 +1322,7 @@ Hotkeys are matched in this order to resolve overlapping key combinations:
 
 ---
 
-## 3.12 Toolbar UI
+## 4.12 Toolbar UI
 
 The toolbar displays six action buttons in this order:
 

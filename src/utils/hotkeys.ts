@@ -15,6 +15,7 @@ export const HOTKEYS = {
   debug:     { key: 'F5',  ctrl: false, shift: false, label: 'F5'       },
   continue:  { key: 'F5',  ctrl: false, shift: false, label: 'F5'       },
   step:      { key: 'F10', ctrl: false, shift: false, label: 'F10'      },
+  pause:     { key: 'F6',  ctrl: false, shift: false, label: 'F6'       },
   stop:      { key: 'F5',  ctrl: false, shift: true,  label: '⇧F5'     },
   reset:     { key: 'F5',  ctrl: true,  shift: true,  label: '⌃⇧F5'    },
   toggleFiles: { key: 'F3',  ctrl: false, shift: false, label: 'F3'     },

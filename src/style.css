@@ -175,6 +175,7 @@ html, body {
 .toolbar .btn-step .material-symbols-outlined { color: #9cdcfe; }
 .toolbar .btn-continue .material-symbols-outlined { color: #4ec9b0; }
 .toolbar .btn-stop .material-symbols-outlined { color: #f44747; }
+.toolbar .btn-pause .material-symbols-outlined { color: #ce9178; }
 .toolbar .btn-reset .material-symbols-outlined { color: #808080; }
 
 /* File-management toolbar buttons */
@@ -269,6 +270,23 @@ html, body {
 .toolbar .vm-status.halted { color: var(--ide-text-muted); background: rgba(128, 128, 128, 0.12); }
 .toolbar .vm-status.error { color: #f44747; background: rgba(244, 71, 71, 0.12); }
 .toolbar .vm-status.waiting_input { color: #ce9178; background: rgba(206, 145, 120, 0.12); }
+
+/* Speed selector */
+.toolbar .speed-selector {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--ide-border);
+  border-radius: 4px;
+  background: var(--ide-bg);
+  color: var(--ide-text);
+  cursor: pointer;
+  margin-left: 8px;
+  flex-shrink: 0;
+  width: 100px;
+}
+.toolbar .speed-selector:focus {
+  outline: 1px solid var(--ide-accent);
+}
 
 /* ── Main layout ──────────────────────────────────────────── */
 
@@ -868,4 +886,45 @@ html, body {
   font-style: italic;
   text-align: center;
   padding: 20px;
+}
+
+/* ── Statistics panel ──────────────────────────────────── */
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 3px;
+}
+
+.stats-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] .stats-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.stats-label {
+  color: var(--ide-text-muted);
+}
+
+.stats-value {
+  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-weight: 500;
+  color: var(--ide-text);
 }

@@ -1120,3 +1120,56 @@ describe('Debugger — VM wrapper', () => {
     expect(vm.state).toBe(VMState.IDLE);
   });
 });
+
+// ── Debugger — Pause ───────────────────────────────────────────
+
+describe('Debugger — Pause', () => {
+  it('pause() from RUNNING sets PAUSED via flag', async () => {
+    const LOOP_INF = `
+_start:
+    MOV AX, 0
+loop:
+    ADD AX, 1
+    JMP loop
+    HALT
+`;
+    const { dbg, vm } = buildDebugger(LOOP_INF);
+    vm.speed = Infinity;
+    setTimeout(() => dbg.pause(), 0);
+    const result = await dbg.start();
+    expect(result.state).toBe(VMState.PAUSED);
+    expect(vm.state).toBe(VMState.PAUSED);
+  });
+});
+
+// ── Debugger — Speed ───────────────────────────────────────────
+
+describe('Debugger — Speed', () => {
+  it('speed getter/setter delegates to VM', () => {
+    const { dbg, vm } = buildDebugger(SIMPLE_PROGRAM);
+    expect(dbg.speed).toBe(Infinity);
+    dbg.speed = 100;
+    expect(vm.speed).toBe(100);
+    expect(dbg.speed).toBe(100);
+  });
+});
+
+// ── Debugger — Stats ───────────────────────────────────────────
+
+describe('Debugger — Stats', () => {
+  it('stats reflect VM execution stats', async () => {
+    const { dbg } = buildDebugger(SIMPLE_PROGRAM);
+    await dbg.start();
+    expect(dbg.stats.totalInstructions).toBeGreaterThan(0);
+    expect(dbg.stats.instructionCounts['MOV']).toBe(3);
+    expect(dbg.stats.instructionCounts['HALT']).toBe(1);
+  });
+
+  it('stats are reset on dbg.reset()', async () => {
+    const { dbg } = buildDebugger(SIMPLE_PROGRAM);
+    await dbg.start();
+    expect(dbg.stats.totalInstructions).toBeGreaterThan(0);
+    dbg.reset();
+    expect(dbg.stats.totalInstructions).toBe(0);
+  });
+});

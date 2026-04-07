@@ -3,9 +3,9 @@ import { Lexer } from '@core/lexer';
 import { Parser } from '@core/parser';
 import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
-import { VMState, Program, DataType, DATA_TYPE_SIZE } from '@core/types';
+import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS } from '@core/types';
 import { ParseError } from '@core/errors';
-import { createEditor, setDebugLine, type DebugLineMode } from '@editor/editor-setup';
+import { createEditor, setDebugLine, setEditorReadOnly, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
 import type { EditorView } from '@codemirror/view';
 
@@ -37,6 +37,12 @@ export function useAppStore() {
   const stdout = ref('');
   const currentLine = ref<number | null>(null);
 
+  // ── Speed & Statistics ───────────────────────────────────
+  const SPEED_KEY = 'asciiasm-speed';
+  const savedSpeed = localStorage.getItem(SPEED_KEY);
+  const speed = ref<number>(savedSpeed ? Number(savedSpeed) : Infinity);
+  const stats = reactive<VMStats>(createEmptyStats());
+
   // ── Errors ───────────────────────────────────────────────
   const parseErrors = ref<ParseError[]>([]);
   const runtimeError = ref<string | null>(null);
@@ -63,6 +69,10 @@ export function useAppStore() {
 
   const canStop = computed(() =>
     vmState.value === VMState.RUNNING || vmState.value === VMState.PAUSED || vmState.value === VMState.WAITING_INPUT
+  );
+
+  const canPause = computed(() =>
+    vmState.value === VMState.RUNNING || vmState.value === VMState.WAITING_INPUT
   );
 
   // ── Editor init ──────────────────────────────────────────
@@ -140,6 +150,8 @@ export function useAppStore() {
     };
 
     vm = new VM(currentProgram, io);
+    vm.speed = speed.value;
+    vm.onAfterStep = () => updateStateFromVM();
     dbg = new Debugger(vm);
 
     // Sync breakpoints
@@ -152,6 +164,8 @@ export function useAppStore() {
   }
 
   // ── State sync ───────────────────────────────────────────
+
+  /** Sync all reactive state from the VM — vmState, registers, memory, stats, etc. */
   function updateStateFromVM() {
     if (!vm) return;
     vmState.value = vm.state;
@@ -163,9 +177,22 @@ export function useAppStore() {
     memorySize.value = vm.memory.size;
     currentLine.value = vm.currentLine;
 
+    // Sync stats
+    const s = vm.stats;
+    stats.totalInstructions = s.totalInstructions;
+    stats.instructionCounts = { ...s.instructionCounts };
+    stats.memoryReads = s.memoryReads;
+    stats.memoryReadBytes = s.memoryReadBytes;
+    stats.memoryWrites = s.memoryWrites;
+    stats.memoryWriteBytes = s.memoryWriteBytes;
+    stats.registerReads = s.registerReads;
+    stats.registerWrites = s.registerWrites;
+
     if (editorView.value) {
       const mode: DebugLineMode = vm.state === VMState.HALTED ? 'halted' : 'paused';
       setDebugLine(editorView.value, currentLine.value, mode);
+      const isActive = vm.state === VMState.RUNNING || vm.state === VMState.PAUSED || vm.state === VMState.WAITING_INPUT;
+      setEditorReadOnly(editorView.value, isActive);
     }
   }
 
@@ -175,7 +202,6 @@ export function useAppStore() {
     stdout.value = '';
     if (!buildVM() || !vm) return;
 
-    vm.state = VMState.RUNNING;
     const result = await vm.run();
     if (result.error) {
       runtimeError.value = result.error;
@@ -231,6 +257,21 @@ export function useAppStore() {
     }
   }
 
+  function pause() {
+    if (dbg) {
+      dbg.pause();
+      // updateStateFromVM() is called when the awaited run()/debug() promise resolves
+    }
+  }
+
+  function setSpeed(value: number) {
+    speed.value = value;
+    localStorage.setItem(SPEED_KEY, String(value));
+    if (vm) {
+      vm.speed = value;
+    }
+  }
+
   function reset() {
     if (dbg) {
       dbg.reset();
@@ -246,8 +287,12 @@ export function useAppStore() {
     memory.value = [];
     memorySize.value = 0;
 
+    // Reset stats
+    Object.assign(stats, createEmptyStats());
+
     if (editorView.value) {
       setDebugLine(editorView.value, null);
+      setEditorReadOnly(editorView.value, false);
     }
 
     vm = null;
@@ -286,6 +331,8 @@ export function useAppStore() {
     parseErrors,
     runtimeError,
     breakpoints,
+    speed,
+    stats,
 
     // Computed
     canRun,
@@ -293,6 +340,7 @@ export function useAppStore() {
     canStep,
     canContinue,
     canStop,
+    canPause,
 
     // Actions
     initEditor,
@@ -302,7 +350,10 @@ export function useAppStore() {
     stepOver,
     continueExecution,
     stop,
+    pause,
     reset,
     clearConsole,
+    setSpeed,
+    SPEED_PRESETS,
   };
 }

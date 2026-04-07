@@ -1,5 +1,5 @@
 import { VM } from './vm';
-import { VMState, DebugState, StepResult, RegisterValue } from './types';
+import { VMState, DebugState, StepResult, RegisterValue, VMStats } from './types';
 
 /**
  * AsciiAsm Debugger — wraps the VM with breakpoints and step control.
@@ -70,12 +70,33 @@ export class Debugger {
 
   /** Stop / abort execution. */
   stop(): void {
-    this.vm.state = VMState.HALTED;
+    this.vm.requestStop();
+  }
+
+  /** Pause execution (next loop iteration will yield PAUSED). */
+  pause(): void {
+    this.vm.requestPause();
   }
 
   /** Reset VM to initial state. */
   reset(): void {
     this.vm.reset();
+  }
+
+  // ── Speed control ────────────────────────────────────
+
+  get speed(): number {
+    return this.vm.speed;
+  }
+
+  set speed(value: number) {
+    this.vm.speed = value;
+  }
+
+  // ── Statistics ──────────────────────────────────────
+
+  get stats(): VMStats {
+    return this.vm.stats;
   }
 
   // ── State inspection ──────────────────────────────────────
