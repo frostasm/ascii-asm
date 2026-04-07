@@ -46,19 +46,26 @@ export class Debugger {
 
   // ── Execution control ─────────────────────────────────────
 
-  /** Execute a single instruction. */
+  /** Execute a single instruction.
+   *  When called from IDLE, transitions to PAUSED at the first instruction
+   *  without executing it (like VS Code F10 start behavior).
+   */
   async stepOver(): Promise<StepResult> {
+    if (this.vm.state === VMState.IDLE) {
+      this.vm.state = VMState.PAUSED;
+      return { state: VMState.PAUSED, currentLine: this.vm.currentLine };
+    }
     return this.vm.step();
   }
 
   /** Run until next breakpoint, HALT, or error. */
   async continue(): Promise<StepResult> {
-    return this.vm.run((line) => this.breakpoints.has(line));
+    return this.vm.run((line) => this.breakpoints.has(line), true);
   }
 
   /** Start debugging — run until first breakpoint or end. */
   async start(): Promise<StepResult> {
-    return this.vm.run((line) => this.breakpoints.has(line));
+    return this.vm.run((line) => this.breakpoints.has(line), false);
   }
 
   /** Stop / abort execution. */

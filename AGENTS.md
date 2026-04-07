@@ -797,13 +797,14 @@ This mirrors the familiar VS Code "start or continue" paradigm.
 1. If no debugger instance exists (state = `IDLE` or after reset):
    - Call `buildVM()`. If parse errors → abort.
    - Clear `runtimeError` and `stdout`.
-2. Call `dbg.stepOver()` → internally calls `vm.step()`.
-3. VM executes exactly one instruction:
-   - Normal instruction → state becomes `RUNNING` (then returns), store treats as `PAUSED`-equivalent since control returns.
-   - `HALT` → `HALTED`
-   - Error → `ERROR`
-   - `READ` → `WAITING_INPUT` (browser prompt appears)
-4. Sync state → editor highlights the next line to execute.
+2. Call `dbg.stepOver()`:
+   - **If VM is IDLE**: transitions to `PAUSED` at the first instruction **without executing it**. This lets the user see the starting line highlighted before any code runs (like VS Code F10 start behavior).
+   - **If VM is PAUSED**: calls `vm.step()` to execute exactly one instruction:
+     - Normal instruction → state remains `PAUSED`.
+     - `HALT` → `HALTED`
+     - Error → `ERROR`
+     - `READ` → `WAITING_INPUT` (browser prompt appears)
+3. Sync state → editor highlights the current/next line to execute.
 
 ### 3.5.4 `continueExecution()` — Resume from Breakpoint
 
@@ -855,10 +856,11 @@ Breakpoints are stored in two synchronized locations:
 
 ### 3.6.3 Breakpoint Behavior During Execution
 
-When `vm.run(shouldPause)` is called:
+When `vm.run(shouldPause, skipFirstCheck)` is called:
 - Before each instruction, the VM checks `shouldPause(currentLine)`.
-- The check is **skipped on step 0** (the first instruction after `start()`/`continue()`) to avoid re-pausing on the same line.
-- If `shouldPause` returns `true` on step > 0 → VM sets state to `PAUSED` and returns immediately.
+- `start()` passes `skipFirstCheck = false` — breakpoints are checked from the very first instruction, so a breakpoint on the first line of the program will be hit.
+- `continue()` passes `skipFirstCheck = true` — the check is skipped on step 0 to avoid re-pausing on the line the VM is already paused on.
+- If `shouldPause` returns `true` (and the check is not skipped) → VM sets state to `PAUSED` and returns immediately.
 
 ### 3.6.4 Toggle Availability
 

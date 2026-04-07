@@ -108,30 +108,45 @@ export class VM {
       return { state: this.state, currentLine: instr.line, output };
     }
 
+    // After executing one instruction, the VM is paused awaiting
+    // the next action (step, continue, stop). See spec §2 — PAUSED
+    // state: "Execution is suspended at a breakpoint or after a single-step."
+    this.state = VMState.PAUSED;
     return { state: this.state, currentLine: this.currentLine, output };
   }
 
-  /** Run until HALT, error, or breakpoint callback returns true. */
-  async run(shouldPause?: (line: number) => boolean): Promise<StepResult> {
+  /** Run until HALT, error, or breakpoint callback returns true.
+   *  @param shouldPause — callback checked before each instruction; return true to pause.
+   *  @param skipFirstCheck — when true, skip the breakpoint check on the very first
+   *         iteration (used by continue() to avoid re-pausing on the current line).
+   */
+  async run(shouldPause?: (line: number) => boolean, skipFirstCheck = false): Promise<StepResult> {
     this.state = VMState.RUNNING;
     let lastResult: StepResult = { state: this.state, currentLine: this.currentLine };
     let steps = 0;
     const MAX_STEPS = 1_000_000; // safety limit
 
-    while (this.state === VMState.RUNNING && steps < MAX_STEPS) {
-      // Check breakpoint before executing
-      if (shouldPause && this.currentLine !== null && shouldPause(this.currentLine) && steps > 0) {
+    while (steps < MAX_STEPS) {
+      // Check breakpoint before executing (skip the first check when resuming
+      // from a breakpoint via continue(), to avoid re-pausing on the same line).
+      if (shouldPause && this.currentLine !== null && shouldPause(this.currentLine)
+          && !(skipFirstCheck && steps === 0)) {
         this.state = VMState.PAUSED;
         return { state: VMState.PAUSED, currentLine: this.currentLine };
       }
 
+      // step() sets state to PAUSED after normal execution;
+      // override back to RUNNING so the loop continues.
+      this.state = VMState.RUNNING;
       lastResult = await this.step();
 
-      if (lastResult.state !== VMState.RUNNING) break;
+      // If step resulted in anything other than PAUSED (i.e. HALTED, ERROR,
+      // WAITING_INPUT), stop the loop — those are terminal/blocking states.
+      if (lastResult.state !== VMState.PAUSED) break;
       steps++;
     }
 
-    if (steps >= MAX_STEPS && this.state === VMState.RUNNING) {
+    if (steps >= MAX_STEPS && (this.state === VMState.RUNNING || this.state === VMState.PAUSED)) {
       this.state = VMState.ERROR;
       return { state: VMState.ERROR, currentLine: this.currentLine, error: 'Execution limit exceeded (infinite loop?)' };
     }
