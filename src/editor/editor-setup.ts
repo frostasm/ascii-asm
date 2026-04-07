@@ -73,9 +73,12 @@ function breakpointGutter(onToggle: (line: number) => void) {
 
 // ── Active debug line highlight ────────────────────────────
 
-const activeDebugLineEffect = StateEffect.define<number | null>();
+export type DebugLineMode = 'paused' | 'halted';
+interface ActiveDebugLine { line: number; mode: DebugLineMode; }
 
-const activeDebugLineState = StateField.define<number | null>({
+const activeDebugLineEffect = StateEffect.define<ActiveDebugLine | null>();
+
+const activeDebugLineState = StateField.define<ActiveDebugLine | null>({
   create() { return null; },
   update(value, tr) {
     for (const e of tr.effects) {
@@ -85,15 +88,17 @@ const activeDebugLineState = StateField.define<number | null>({
   },
 });
 
-const debugLineDecoration = Decoration.line({ class: 'cm-debug-active-line' });
+const debugLinePausedDecoration = Decoration.line({ class: 'cm-debug-active-line' });
+const debugLineHaltedDecoration = Decoration.line({ class: 'cm-debug-halted-line' });
 
 const activeDebugLineDecoration = EditorView.decorations.compute(
   [activeDebugLineState],
   (state) => {
-    const line = state.field(activeDebugLineState);
-    if (line === null || line < 1 || line > state.doc.lines) return RangeSet.empty;
-    const lineInfo = state.doc.line(line);
-    return RangeSet.of([debugLineDecoration.range(lineInfo.from)]);
+    const active = state.field(activeDebugLineState);
+    if (active === null || active.line < 1 || active.line > state.doc.lines) return RangeSet.empty;
+    const lineInfo = state.doc.line(active.line);
+    const deco = active.mode === 'halted' ? debugLineHaltedDecoration : debugLinePausedDecoration;
+    return RangeSet.of([deco.range(lineInfo.from)]);
   },
 );
 
@@ -109,9 +114,9 @@ const debugGutterMarker = new class extends GutterMarker {
 const debugGutter = gutter({
   class: 'cm-debug-gutter',
   markers: (view) => {
-    const line = view.state.field(activeDebugLineState);
-    if (line === null || line < 1 || line > view.state.doc.lines) return RangeSet.empty;
-    const lineInfo = view.state.doc.line(line);
+    const active = view.state.field(activeDebugLineState);
+    if (active === null || active.line < 1 || active.line > view.state.doc.lines) return RangeSet.empty;
+    const lineInfo = view.state.doc.line(active.line);
     return RangeSet.of([debugGutterMarker.range(lineInfo.from)]);
   },
 });
@@ -191,6 +196,9 @@ export function createEditor(
         '.cm-debug-active-line': {
           backgroundColor: 'rgba(253, 216, 53, 0.15)',
         },
+        '.cm-debug-halted-line': {
+          backgroundColor: 'rgba(39, 174, 96, 0.18)',
+        },
       }),
     ],
   });
@@ -200,10 +208,11 @@ export function createEditor(
 
 /**
  * Highlight the current debug line in the editor.
+ * @param mode 'paused' (yellow) while stepping/at breakpoint, 'halted' (green) when program ended.
  */
-export function setDebugLine(view: EditorView, line: number | null): void {
+export function setDebugLine(view: EditorView, line: number | null, mode: DebugLineMode = 'paused'): void {
   view.dispatch({
-    effects: activeDebugLineEffect.of(line),
+    effects: activeDebugLineEffect.of(line !== null ? { line, mode } : null),
   });
 }
 

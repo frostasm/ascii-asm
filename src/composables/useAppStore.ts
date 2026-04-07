@@ -5,7 +5,7 @@ import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
 import { VMState, Program, DataType, DATA_TYPE_SIZE } from '@core/types';
 import { ParseError } from '@core/errors';
-import { createEditor, setDebugLine } from '@editor/editor-setup';
+import { createEditor, setDebugLine, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
 import type { EditorView } from '@codemirror/view';
 
@@ -164,7 +164,8 @@ export function useAppStore() {
     currentLine.value = vm.currentLine;
 
     if (editorView.value) {
-      setDebugLine(editorView.value, currentLine.value);
+      const mode: DebugLineMode = vm.state === VMState.HALTED ? 'halted' : 'paused';
+      setDebugLine(editorView.value, currentLine.value, mode);
     }
   }
 

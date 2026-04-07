@@ -14,6 +14,7 @@
   --ide-warning: #ce9178;
   --ide-breakpoint: #e53935;
   --ide-debug-line: rgba(253, 216, 53, 0.15);
+  --ide-debug-halted-line: rgba(39, 174, 96, 0.18);
   --ide-theme-icon: 'light_mode';
 }
 
@@ -30,6 +31,7 @@
   --ide-warning: #b5410c;
   --ide-breakpoint: #e53935;
   --ide-debug-line: rgba(200, 160, 0, 0.15);
+  --ide-debug-halted-line: rgba(22, 140, 70, 0.15);
   --ide-theme-icon: 'dark_mode';
 }
 

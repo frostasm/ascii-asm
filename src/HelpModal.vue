@@ -56,7 +56,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKey));
   border: 1px solid var(--ide-border);
   border-radius: 8px;
   width: 100%;
-  max-width: 860px;
+  max-width: 1000px;
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 80px);
