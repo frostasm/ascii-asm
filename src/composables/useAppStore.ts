@@ -5,9 +5,10 @@ import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
 import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights } from '@core/types';
 import { ParseError } from '@core/errors';
-import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, toggleBreakpointLine, type DebugLineMode } from '@editor/editor-setup';
+import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, toggleBreakpointLine, clearEditorHistory, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
 import type { EditorView } from '@codemirror/view';
+import { undoDepth, redoDepth } from "@codemirror/commands"
 
 const HELLO_WORLD = `#memory 32
 #data 0, TEXT "Hello, World!$"
@@ -405,6 +406,7 @@ export function useAppStore() {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: code },
       });
+      clearEditorHistory(view);
     }
     parseSource();
   }

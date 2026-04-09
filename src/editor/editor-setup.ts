@@ -10,11 +10,13 @@ import { asciiAsmLanguage } from './asciiasm-language';
 import { asciiAsmLinter } from './asciiasm-linter';
 import { asciiAsmAutocomplete } from './asciiasm-autocomplete';
 import { colorSwatchPlugin } from './asciiasm-color-swatch';
+import { h } from 'vue';
 
 // ── Theme compartment ────────────────────────────────────────
 
 const themeCompartment = new Compartment();
 const readOnlyCompartment = new Compartment();
+const historyCompartment = new Compartment();
 
 function buildThemeExtension(theme: AppTheme) {
   return theme === 'dark' ? oneDark : [];
@@ -152,7 +154,7 @@ export function createEditor(
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightActiveLine(),
-      history(),
+      historyCompartment.of(history()),
       bracketMatching(),
       highlightSelectionMatches(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
@@ -267,6 +269,17 @@ export function setBreakpoints(view: EditorView, lines: number[]): void {
     effects.push(breakpointEffect.of({ pos, on: true }));
   }
   view.dispatch({ effects });
+}
+
+/**
+ * Reset the history state for the current editor session.
+ * Used when switching between virtual files to prevent undoing into another file.
+ */
+export function clearEditorHistory(view: EditorView): void {
+  // clear history by replacing it with a new empty history instance
+  view.dispatch({ effects: historyCompartment.reconfigure([])});
+  // add new history instance so that undo/redo commands work after clearing
+  view.dispatch({ effects: historyCompartment.reconfigure(history())});
 }
 
 /**
