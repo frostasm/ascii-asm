@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { marked } from 'marked';
-// Vite raw import — no additional plugin needed
-import specRaw from '../AsciiAsmSpecification.md?raw';
+import { useLanguage, type SpecLanguage } from './composables/useLanguage';
+// Generated from AGENTS.md Part 2 by the extract-spec Vite plugin (vite.config.ts)
+import specEnRaw from '../docs/en/language-specification.md?raw';
+import specUkRaw from '../docs/uk/language-specification.md?raw';
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
 const activeTab = ref<'spec' | 'ascii'>('spec');
+const { specLanguage, setSpecLanguage } = useLanguage();
 
-const html = computed(() => marked.parse(specRaw) as string);
+// Map of language → raw markdown
+const specsByLanguage: Record<SpecLanguage, string> = {
+  en: specEnRaw,
+  uk: specUkRaw,
+};
+
+const html = computed(() => marked.parse(specsByLanguage[specLanguage.value]) as string);
 
 // ── ASCII table data (printable range 32–126) ─────────────
 type AsciiCategory = 'space' | 'digit' | 'upper' | 'lower' | 'symbol';
@@ -96,6 +105,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleKey));
           <span class="material-symbols-outlined" style="font-size:15px;">table_chart</span>
           ASCII Table
         </button>
+        <!-- Language selector (visible only on spec tab) -->
+        <div v-if="activeTab === 'spec'" class="help-language-selector">
+          <select 
+            :value="specLanguage" 
+            @change="(e) => setSpecLanguage((e.target as HTMLSelectElement).value as SpecLanguage)"
+            class="help-language-select"
+          >
+            <option value="en">English</option>
+            <option value="uk">Українська</option>
+          </select>
+        </div>
       </div>
 
       <!-- Body -->
@@ -238,6 +258,36 @@ onUnmounted(() => document.removeEventListener('keydown', handleKey));
   border-color: var(--ide-border);
   border-bottom-color: var(--ide-panel-bg);
   font-weight: 600;
+}
+
+/* ── Language selector ───────────────────────────────── */
+.help-language-selector {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.help-language-select {
+  padding: 2px 4px;
+  margin: 0px;
+  border: 1px solid var(--ide-border);
+  border-radius: 4px;
+  background: var(--ide-input-bg, var(--ide-panel-bg));
+  color: var(--ide-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.help-language-select:hover {
+  border-color: var(--ide-accent);
+}
+
+.help-language-select:focus {
+  outline: none;
+  border-color: var(--ide-accent);
+  box-shadow: 0 0 0 2px rgba(100, 150, 255, 0.2);
 }
 
 /* ── Body ────────────────────────────────────────────────── */

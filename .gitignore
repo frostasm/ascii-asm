@@ -1,3 +1,6 @@
+# Generated docs (extracted from AGENTS.md at build time)
+docs/en/language-specification.md
+
 !**/glob-import/dir/node_modules
 .DS_Store
 .idea

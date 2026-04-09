@@ -1,8 +1,10 @@
-#memory 8
+#memory 1
 #data 0, CHAR 'A'
 
 _start:
-  WRITE CHAR [0]         ; outputs: A
+  WRITE "Source char is: "
+  WRITELN CHAR [0]         ; outputs: A
   ADD   CHAR [0], 1      ; 'A' + 1 = 'B'
+  WRITE "Next Char after 'A' is: "
   WRITELN CHAR [0]       ; outputs: B + newline
   HALT

@@ -3,14 +3,16 @@
 #data 4, DWORD 0
 
 _start:
-  READ DWORD [0]
-  READ DWORD [4]
+  READ DWORD [0], "Enter first number:"
+  READ DWORD [4], "Enter second number:"
   MOV  AX, DWORD [0]
   CMP  AX, DWORD [4]
   JGE  show_first
+  WRITE "Maximum: "
   WRITELN DWORD [4]
   JMP  done
 show_first:
+  WRITE "Maximum: "
   WRITELN DWORD [0]
 done:
   HALT

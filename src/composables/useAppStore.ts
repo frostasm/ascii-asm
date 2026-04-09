@@ -140,19 +140,33 @@ export function useAppStore() {
   }
 
   /**
+   * Auto-color palette applied to #data directives that have no explicit color.
+   * Chosen to be clearly distinct from the memory-access highlight colors:
+   *   green #22c55e (read), red #ef4444 (write), orange #f59e0b (read+write).
+   */
+  const AUTO_DATA_COLORS = [
+    '#3b82f6', // blue
+    '#a855f7', // purple
+    '#06b6d4', // cyan
+    '#ec4899', // pink
+  ] as const;
+
+  /**
    * Build a per-cell color array from the program's #data directives.
-   * Cells without a color annotation get an empty string.
+   * Directives without an explicit color annotation receive an auto-assigned
+   * color cycling through AUTO_DATA_COLORS.
    */
   function computeColorMap(program: Program): string[] {
     const colors: string[] = new Array(program.memory.size).fill('');
+    let autoIdx = 0;
     for (const d of program.data) {
-      if (!d.color) continue;
+      const color = d.color ?? AUTO_DATA_COLORS[autoIdx++ % AUTO_DATA_COLORS.length];
       const cellCount = d.dataType === DataType.TEXT
         ? (d.value as string).length  // TEXT value always includes the '$' terminator
         : DATA_TYPE_SIZE[d.dataType];
       for (let i = 0; i < cellCount; i++) {
         const idx = d.address + i;
-        if (idx < colors.length) colors[idx] = d.color;
+        if (idx < colors.length) colors[idx] = color;
       }
     }
     return colors;

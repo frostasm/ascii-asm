@@ -163,7 +163,9 @@ export interface DataDirective {
   address: number;
   dataType: DataType;
   value: number | string; // number for WORD/DWORD/QWORD/CHAR; string for TEXT
-  /** Optional CSS hex color (#RRGGBB or #RRGGBBAA) for memory visualization highlighting */
+  /** Optional color for memory visualization highlighting.
+   *  Stored as a lowercase #rrggbb hex string regardless of input format.
+   *  Accepted in source: #RRGGBB, #RRGGBBAA, or any CSS named color (e.g. "red", "cornflowerblue"). */
   color?: string;
 }
 

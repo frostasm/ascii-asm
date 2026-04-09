@@ -4,9 +4,17 @@ import {
   Instruction, Operand, JUMP_MNEMONICS,
 } from './types';
 import { ParseError, MissingStartLabelError, MissingHaltError, UndefinedLabelError } from './errors';
+import colorNames from 'color-name';
 
 // HEX_COLOR token alias for brevity inside parseDataDirectives
 const { HEX_COLOR } = TokenType;
+
+/** Convert a CSS named color to lowercase #rrggbb, or null if unknown. */
+function namedColorToHex(name: string): string | null {
+  const rgb = colorNames[name.toLowerCase() as keyof typeof colorNames];
+  if (!rgb) return null;
+  return '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Parser for the AsciiAsm language.
@@ -174,7 +182,8 @@ export class Parser {
         value = parseInt(numToken.value, 10);
       }
 
-      // Optional third parameter: , #RRGGBB / #RRGGBBAA  — background color for memory visualization
+      // Optional third parameter: , <color>  — background color for memory visualization.
+      // Accepted formats: #RRGGBB, #RRGGBBAA, or any CSS named color (e.g. red, cornflowerblue).
       let color: string | undefined;
       if (this.check(TokenType.COMMA)) {
         const savedPos = this.pos;
@@ -182,10 +191,20 @@ export class Parser {
         if (this.check(HEX_COLOR)) {
           color = this.current().value;
           this.advance();
-        } else {
-          // Not a color token — report error and consume to recover
+        } else if (this.check(TokenType.IDENTIFIER)) {
           const t = this.current();
-          this.addError(`Expected hex color literal (#RRGGBB or #RRGGBBAA) after comma`, t.line, t.col);
+          const hex = namedColorToHex(t.value);
+          if (hex !== null) {
+            color = hex;
+            this.advance();
+          } else {
+            this.addError(`Unknown color: '${t.value}'. Use a CSS named color (e.g. red) or #RRGGBB / #RRGGBBAA`, t.line, t.col);
+            this.pos = savedPos; // backtrack past comma
+          }
+        } else {
+          // Not a color token — report error and backtrack
+          const t = this.current();
+          this.addError(`Expected a color after comma: CSS named color (e.g. red) or #RRGGBB / #RRGGBBAA`, t.line, t.col);
           this.pos = savedPos; // backtrack
         }
       }
