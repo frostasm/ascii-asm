@@ -1,12 +1,13 @@
 # AsciiAsm — Educational Assembler IDE
 
-A browser-based IDE for learning assembly language concepts through a simplified, human-readable virtual machine.
+A [browser-based IDE](https://frostasm.github.io/ascii-asm/) for learning assembly language concepts through a simplified, human-readable virtual machine.
+
 
 ## What is AsciiAsm?
 
 AsciiAsm (Education Assembler) is designed for teaching the fundamentals of low-level programming. It runs entirely in the browser and provides:
 
-- A **code editor** with syntax highlighting, autocomplete, linting, and breakpoints (CodeMirror 6)
+- A **code editor** with syntax highlighting, autocomplete, linting, and breakpoints
 - A **virtual machine** that executes programs step-by-step
 - A **debugger** with breakpoints, single-stepping, and live state inspection
 - **Registers**, **flags**, and **memory** panels for real-time visualization

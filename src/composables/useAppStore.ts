@@ -208,7 +208,7 @@ export function useAppStore() {
   // ── State sync ───────────────────────────────────────────
 
   /** Sync all reactive state from the VM — vmState, registers, memory, stats, etc. */
-  function updateStateFromVM() {
+  function updateStateFromVM(accessVisualization: boolean = false) {
     if (!vm) return;
     vmState.value = vm.state;
     registers.value = vm.registers.getSnapshot() as Record<string, any>;
@@ -231,7 +231,7 @@ export function useAppStore() {
     stats.registerWrites = s.registerWrites;
 
     // Sync access highlights (only when visualization is enabled)
-    if (accessVisualizationEnabled.value) {
+    if (accessVisualizationEnabled.value || accessVisualization) {
       accessHighlights.value = {
         memReads:  [...vm.lastAccess.memReads],
         memWrites: [...vm.lastAccess.memWrites],
@@ -292,7 +292,7 @@ export function useAppStore() {
     if (result.error) {
       runtimeError.value = result.error;
     }
-    updateStateFromVM();
+    updateStateFromVM(true /* accessVisualization */);
   }
 
   async function continueExecution() {
@@ -325,7 +325,7 @@ export function useAppStore() {
     if (result.error) {
       runtimeError.value = result.error;
     }
-    updateStateFromVM();
+    updateStateFromVM(true /* accessVisualization */);
   }
 
   function toggleBreakpointAtCursor() {
@@ -345,14 +345,14 @@ export function useAppStore() {
   function stop() {
     if (dbg) {
       dbg.stop();
-      updateStateFromVM();
+      updateStateFromVM(true /* accessVisualization */);
     }
   }
 
   function pause() {
     if (dbg) {
       dbg.pause();
-      // updateStateFromVM() is called when the awaited run()/debug() promise resolves
+      updateStateFromVM(true /* accessVisualization */);
     }
   }
 
