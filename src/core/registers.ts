@@ -1,4 +1,4 @@
-import { Register, Flags, RegisterValue, GENERAL_PURPOSE_REGISTERS } from './types';
+import { Register, Flags, RegisterValue, GENERAL_PURPOSE_REGISTERS, PROGRAM_VISIBLE_REGISTERS } from './types';
 
 /**
  * AsciiAsm Register File — general-purpose registers + FLAGS.
@@ -16,11 +16,17 @@ export class RegisterFile {
     this.flags = { ZF: false, SF: false, OF: false };
   }
 
-  get(reg: Register): RegisterValue | null {
+  get(reg: Register, instructionPointer = 0): RegisterValue | null {
+    if (reg === Register.IP) {
+      return { type: 'integer', value: instructionPointer };
+    }
     return this.values.get(reg) ?? null;
   }
 
   set(reg: Register, value: RegisterValue): void {
+    if (reg === Register.IP) {
+      throw new Error('IP is read-only');
+    }
     this.values.set(reg, value);
   }
 
@@ -44,9 +50,14 @@ export class RegisterFile {
   }
 
   /** Returns a snapshot for UI display. */
-  getSnapshot(): Record<string, RegisterValue | null> {
+  getSnapshot(instructionPointer = 0): Record<string, RegisterValue | null> {
     return Object.fromEntries(
-      GENERAL_PURPOSE_REGISTERS.map(reg => [reg, this.values.get(reg) ?? null]),
+      PROGRAM_VISIBLE_REGISTERS.map(reg => [
+        reg,
+        reg === Register.IP
+          ? { type: 'integer', value: instructionPointer }
+          : (this.values.get(reg) ?? null),
+      ]),
     );
   }
 

@@ -647,6 +647,7 @@ describe('Debugger — getState() inspection', () => {
     await dbg.start();
     const state = dbg.getState();
     expect(state.vmState).toBe(VMState.HALTED);
+    expect(state.registers['IP']).toEqual({ type: 'integer', value: 3 });
     expect(state.registers['AX']).toEqual({ type: 'integer', value: 1 });
     expect(state.registers['BX']).toEqual({ type: 'integer', value: 2 });
     expect(state.registers['CX']).toEqual({ type: 'integer', value: 3 });

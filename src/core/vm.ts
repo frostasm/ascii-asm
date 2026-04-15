@@ -281,6 +281,7 @@ export class VM {
     const line = instr.line;
 
     if (dst.kind === 'register') {
+      this.assertRegisterWritable(dst.reg, line);
       // MOV reg, ...
       const value = this.resolveSource(src, line);
       this.registers.set(dst.reg, value);
@@ -346,6 +347,7 @@ export class VM {
     const line = instr.line;
 
     if (dst.kind === 'register') {
+      this.assertRegisterWritable(dst.reg, line);
       const regVal = this.getRegisterValue(dst.reg, line);
       const srcVal = this.resolveSource(src, line);
 
@@ -710,13 +712,19 @@ export class VM {
    * Get register value, throwing if uninitialized.
    */
   private getRegisterValue(reg: Register, line: number): RegisterValue {
-    const val = this.registers.get(reg);
+    const val = this.registers.get(reg, this.ip);
     if (val === null) {
       throw new RuntimeError(`Register ${reg} is not initialized`, line);
     }
     this.stats.registerReads++;
     this.lastAccess.regReads.push(reg as string);
     return val;
+  }
+
+  private assertRegisterWritable(reg: Register, line: number): void {
+    if (reg === Register.IP) {
+      throw new RuntimeError('Register IP is read-only', line);
+    }
   }
 
   /**

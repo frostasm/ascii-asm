@@ -21,6 +21,7 @@ const MNEMONIC_COMPLETIONS = [
 ];
 
 const REGISTER_COMPLETIONS = [
+  { label: 'IP', type: 'variable', info: 'Read-only instruction pointer register' },
   { label: 'AX', type: 'variable', info: 'Accumulator register' },
   { label: 'BX', type: 'variable', info: 'Base/address register' },
   { label: 'CX', type: 'variable', info: 'Counter register' },

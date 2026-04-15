@@ -685,6 +685,11 @@ html, body {
   min-width: 28px;
 }
 
+.register-readonly-lock {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
 .register-type {
   font-size: 11px;
   color: var(--ide-text-muted);

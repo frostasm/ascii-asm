@@ -77,6 +77,27 @@ _start:
     expect(vm.registers.get('DI' as any)).toEqual({ type: 'integer', value: 42 });
   });
 
+  it('MOV reg, IP reads the current instruction pointer', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, IP
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 0 });
+  });
+
+  it('MOV to IP raises runtime error', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV IP, 1
+    HALT
+`);
+    const result = await vm.run();
+    expect(result.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Register IP is read-only');
+  });
+
   it('MOV reg, label stores instruction pointer', async () => {
     const { vm } = buildVM(`
 _start:
@@ -136,6 +157,17 @@ _start:
 `);
     await vm.run();
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 15 });
+  });
+
+  it('ADD to IP raises runtime error', async () => {
+    const { vm } = buildVM(`
+_start:
+    ADD IP, 1
+    HALT
+`);
+    const result = await vm.run();
+    expect(result.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Register IP is read-only');
   });
 
   it('SUB reg, immediate', async () => {
@@ -295,6 +327,17 @@ target:
 `);
     await vm.run();
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 9 });
+  });
+
+  it('JMP supports IP register target', async () => {
+    const { vm } = buildVM(`
+_start:
+    JMP IP
+    HALT
+`);
+    const result = await vm.step();
+    expect(result.state).toBe(VMState.PAUSED);
+    expect(vm.instructionPointer).toBe(0);
   });
 
   it('JMP register with CHAR target raises type mismatch', async () => {

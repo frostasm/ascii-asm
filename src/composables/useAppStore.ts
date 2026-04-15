@@ -3,7 +3,7 @@ import { Lexer } from '@core/lexer';
 import { Parser } from '@core/parser';
 import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
-import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights, GENERAL_PURPOSE_REGISTERS } from '@core/types';
+import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights, PROGRAM_VISIBLE_REGISTERS, Register } from '@core/types';
 import { ParseError } from '@core/errors';
 import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, toggleBreakpointLine, clearEditorHistory, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
@@ -20,7 +20,7 @@ _start:
 
 export function useAppStore() {
   const createEmptyRegisterState = () =>
-    Object.fromEntries(GENERAL_PURPOSE_REGISTERS.map(reg => [reg, null])) as Record<string, any>;
+    Object.fromEntries(PROGRAM_VISIBLE_REGISTERS.map(reg => [reg, reg === Register.IP ? { type: 'integer', value: 0 } : null])) as Record<string, any>;
 
   // ── Internal (non-reactive) ──────────────────────────────
   let vm: VM | null = null;
@@ -214,7 +214,7 @@ export function useAppStore() {
   function updateStateFromVM(accessVisualization: boolean = false) {
     if (!vm) return;
     vmState.value = vm.state;
-    registers.value = vm.registers.getSnapshot() as Record<string, any>;
+    registers.value = vm.registers.getSnapshot(vm.instructionPointer) as Record<string, any>;
     flags.ZF = vm.registers.getFlagsSnapshot().ZF;
     flags.SF = vm.registers.getFlagsSnapshot().SF;
     flags.OF = vm.registers.getFlagsSnapshot().OF;

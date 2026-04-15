@@ -118,7 +118,7 @@ export class Debugger {
     return {
       vmState: this.vm.state,
       currentLine: this.vm.currentLine,
-      registers: this.vm.registers.getSnapshot() as Record<string, RegisterValue | null>,
+      registers: this.vm.registers.getSnapshot(this.vm.instructionPointer) as Record<string, RegisterValue | null>,
       flags: this.vm.registers.getFlagsSnapshot(),
       memory: this.vm.memory.getSnapshot(),
       stdout: this.vm.stdout,

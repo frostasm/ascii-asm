@@ -5,7 +5,7 @@ export enum TokenType {
   LABEL_DEF = 'LABEL_DEF',        // identifier: (label definition, with colon)
   IDENTIFIER = 'IDENTIFIER',      // label reference (in JMP), keyword (flag/halt)
   MNEMONIC = 'MNEMONIC',          // MOV, ADD, SUB, ...
-  REGISTER = 'REGISTER',          // AX, BX, CX, DX, SI, DI
+  REGISTER = 'REGISTER',          // IP, AX, BX, CX, DX, SI, DI
   TYPE_PREFIX = 'TYPE_PREFIX',     // CHAR, WORD, DWORD, QWORD, TEXT
   NUMBER = 'NUMBER',              // 42, -7
   CHAR_LITERAL = 'CHAR_LITERAL',  // 'A'
@@ -55,6 +55,7 @@ export const DATA_TYPE_RANGE: Partial<Record<DataType, [number, number]>> = {
 // ─── Registers ─────────────────────────────────────────────────
 
 export enum Register {
+  IP = 'IP',
   AX = 'AX',
   BX = 'BX',
   CX = 'CX',
@@ -70,6 +71,11 @@ export const GENERAL_PURPOSE_REGISTERS: Register[] = [
   Register.DX,
   Register.SI,
   Register.DI,
+];
+
+export const PROGRAM_VISIBLE_REGISTERS: Register[] = [
+  Register.IP,
+  ...GENERAL_PURPOSE_REGISTERS,
 ];
 
 // ─── Mnemonics ─────────────────────────────────────────────────

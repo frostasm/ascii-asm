@@ -5,6 +5,7 @@ import { Register } from '@core/types';
 describe('RegisterFile', () => {
   it('initializes registers as null', () => {
     const regs = new RegisterFile();
+    expect(regs.get(Register.IP, 0)).toEqual({ type: 'integer', value: 0 });
     expect(regs.get(Register.AX)).toBeNull();
     expect(regs.get(Register.BX)).toBeNull();
     expect(regs.get(Register.CX)).toBeNull();
@@ -76,12 +77,18 @@ describe('RegisterFile', () => {
     regs.set(Register.AX, { type: 'integer', value: 1 });
     regs.set(Register.CX, { type: 'char', value: 65 });
     regs.set(Register.DI, { type: 'integer', value: 99 });
-    const snap = regs.getSnapshot();
+    const snap = regs.getSnapshot(7);
+    expect(snap.IP).toEqual({ type: 'integer', value: 7 });
     expect(snap.AX).toEqual({ type: 'integer', value: 1 });
     expect(snap.BX).toBeNull();
     expect(snap.CX).toEqual({ type: 'char', value: 65 });
     expect(snap.DX).toBeNull();
     expect(snap.SI).toBeNull();
     expect(snap.DI).toEqual({ type: 'integer', value: 99 });
+  });
+
+  it('rejects writes to IP', () => {
+    const regs = new RegisterFile();
+    expect(() => regs.set(Register.IP, { type: 'integer', value: 1 })).toThrow('IP is read-only');
   });
 });

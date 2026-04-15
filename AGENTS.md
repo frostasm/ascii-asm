@@ -283,10 +283,11 @@ Mixing CHAR and integer types is forbidden in all operations, **except** `ADD`/`
 (CHAR ± integer = CHAR). Attempting to perform a forbidden cross-type operation
 results in a runtime error: `Runtime Error: Type Mismatch`.
 
-### 2.2.2 Service Registers (not accessible from program code)
+### 2.2.2 Service Registers
 
 | Register | Purpose |
 |----------|---------|
+| `IP` | Instruction Pointer — index of the current instruction in the parsed program. This is the VM's internal instruction pointer, **not** the source-code line number. `IP` is readable from program code as an integer register value, but it is read-only; any attempt to write to `IP` causes `Runtime Error`. |
 | `SLP` | Source Line Pointer — index of the current instruction in source code (line) |
 | `FLAGS` | Status flags: ZF, SF, OF |
 
@@ -366,6 +367,7 @@ MOV CHAR [addr], 'c'        ; memory CHAR ← character literal
 
 **Type rules:**
 - `MOV reg, label` — reg receives an integer instruction pointer for the first instruction after the label.
+- `MOV IP, ...` — **forbidden** because `IP` is read-only (`Runtime Error`).
 - `MOV WORD/DWORD/QWORD [addr], reg` — reg **must** contain an integer, otherwise `Runtime Error: Type Mismatch`.
 - `MOV CHAR [addr], reg` — reg **must** contain CHAR, otherwise `Runtime Error: Type Mismatch`.
 - `MOV CHAR [addr], imm` — **forbidden** (`Runtime Error: Type Mismatch`). Use `MOV CHAR [addr], 'c'`.
@@ -693,7 +695,7 @@ executes a parsed `Program` one instruction at a time. It relies on three suppor
 |--------|------|----------------|
 | **VM** | `core/vm.ts` | Instruction execution, state machine, I/O delegation |
 | **Memory** | `core/memory.ts` | Linear array of ASCII cells (read/write by type) |
-| **RegisterFile** | `core/registers.ts` | 6 general-purpose registers + FLAGS |
+| **RegisterFile** | `core/registers.ts` | 6 writable general-purpose registers + read-only `IP` snapshot + FLAGS |
 | **Errors** | `core/errors.ts` | Runtime / parse error hierarchy |
 
 The VM is a **pure-logic** module — it has zero UI dependencies and communicates
@@ -960,7 +962,8 @@ Positive values are zero-padded to fill the full cell width.
 
 ### 3.11.1 Registers
 
-Six general-purpose registers: `AX`, `BX`, `CX`, `DX`, `SI`, `DI`.
+Six writable general-purpose registers: `AX`, `BX`, `CX`, `DX`, `SI`, `DI`.
+Additionally, the UI and program-visible register snapshot include a read-only `IP` register that always exposes the VM's current internal instruction pointer as an integer value.
 Each holds a `RegisterValue | null`:
 
 ```typescript
@@ -968,7 +971,8 @@ type RegisterValue = { type: 'char'; value: number }    // ASCII code 32–126
                    | { type: 'integer'; value: number }; // signed integer
 ```
 
-Registers start as `null` (uninitialized). Accessing an uninitialized register throws `RuntimeError`.
+Writable registers start as `null` (uninitialized). Accessing an uninitialized writable register throws `RuntimeError`.
+`IP` is always available and never becomes `null`.
 
 ### 3.11.2 FLAGS
 
@@ -1207,7 +1211,7 @@ This mirrors the familiar VS Code "start or continue" paradigm.
    - `runtimeError` → `null`
    - `vmState` → `IDLE`
    - `currentLine` → `null`
-   - `registers` → `{ AX: null, BX: null, CX: null, DX: null, SI: null, DI: null }`
+   - `registers` → `{ IP: { type: 'integer', value: 0 }, AX: null, BX: null, CX: null, DX: null, SI: null, DI: null }`
    - `flags` → `{ ZF: false, SF: false, OF: false }`
    - `memory` → `[]`
    - `memorySize` → `0`
@@ -1255,7 +1259,7 @@ When the VM is in `PAUSED` state, the following data is available for inspection
 | Data | Source | Description |
 |------|--------|-------------|
 | **Current Line** | `vm.currentLine` | 1-based source line of the next instruction to execute |
-| **Registers** | `vm.registers.getSnapshot()` | Values and types of AX, BX, CX, DX, SI, DI |
+| **Registers** | `vm.registers.getSnapshot()` | Values and types of read-only `IP` plus AX, BX, CX, DX, SI, DI |
 | **Flags** | `vm.registers.getFlagsSnapshot()` | ZF, SF, OF boolean values |
 | **Memory** | `vm.memory.getSnapshot()` | Full memory array (ASCII codes) |
 | **Stdout** | `vm.stdout` | Accumulated program output |

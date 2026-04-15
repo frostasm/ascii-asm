@@ -7,7 +7,7 @@ import HelpModal from './HelpModal.vue';
 import { formatRegisterValue, formatRegisterType, formatMemoryCell, formatBytes } from '@utils/formatter';
 import { setEditorTheme } from '@editor/editor-setup';
 import { HOTKEYS, matchesHotkey } from '@utils/hotkeys';
-import { GENERAL_PURPOSE_REGISTERS } from '@core/types';
+import { PROGRAM_VISIBLE_REGISTERS } from '@core/types';
 
 declare const __APP_VERSION__: string;
 const appVersion = __APP_VERSION__;
@@ -336,7 +336,7 @@ function regRowStyle(name: string): Record<string, string> {
 
 // ── Side Panel Tabs ──────────────────────────────────────
 const activeTab = ref<'state' | 'stats'>('state');
-const registerNames = GENERAL_PURPOSE_REGISTERS;
+const registerNames = PROGRAM_VISIBLE_REGISTERS;
 
 // ── Stats computed helpers ────────────────────────────────
 const sortedInstructionCounts = computed(() => {
@@ -626,7 +626,9 @@ function handleSpeedChange(e: Event) {
               :key="name"
               :style="regRowStyle(name)"
             >
-              <span class="register-name">{{ name }}</span>
+              <span class="register-name">
+                {{ name }}<span v-if="name === 'IP'" class="register-readonly-lock" title="Read-only register"> 🔒</span>
+              </span>
               <span class="register-type">{{ formatRegisterType(store.registers[name]) }}</span>
               <span class="register-value">{{ formatRegisterValue(store.registers[name]) }}</span>
             </div>
