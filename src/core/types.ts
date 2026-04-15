@@ -5,7 +5,7 @@ export enum TokenType {
   LABEL_DEF = 'LABEL_DEF',        // identifier: (label definition, with colon)
   IDENTIFIER = 'IDENTIFIER',      // label reference (in JMP), keyword (flag/halt)
   MNEMONIC = 'MNEMONIC',          // MOV, ADD, SUB, ...
-  REGISTER = 'REGISTER',          // AX, BX, CX, DX
+  REGISTER = 'REGISTER',          // AX, BX, CX, DX, SI, DI
   TYPE_PREFIX = 'TYPE_PREFIX',     // CHAR, WORD, DWORD, QWORD, TEXT
   NUMBER = 'NUMBER',              // 42, -7
   CHAR_LITERAL = 'CHAR_LITERAL',  // 'A'
@@ -59,7 +59,18 @@ export enum Register {
   BX = 'BX',
   CX = 'CX',
   DX = 'DX',
+  SI = 'SI',
+  DI = 'DI',
 }
+
+export const GENERAL_PURPOSE_REGISTERS: Register[] = [
+  Register.AX,
+  Register.BX,
+  Register.CX,
+  Register.DX,
+  Register.SI,
+  Register.DI,
+];
 
 // ─── Mnemonics ─────────────────────────────────────────────────
 

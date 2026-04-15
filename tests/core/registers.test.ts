@@ -9,6 +9,8 @@ describe('RegisterFile', () => {
     expect(regs.get(Register.BX)).toBeNull();
     expect(regs.get(Register.CX)).toBeNull();
     expect(regs.get(Register.DX)).toBeNull();
+    expect(regs.get(Register.SI)).toBeNull();
+    expect(regs.get(Register.DI)).toBeNull();
   });
 
   it('initializes flags as cleared', () => {
@@ -73,10 +75,13 @@ describe('RegisterFile', () => {
     const regs = new RegisterFile();
     regs.set(Register.AX, { type: 'integer', value: 1 });
     regs.set(Register.CX, { type: 'char', value: 65 });
+    regs.set(Register.DI, { type: 'integer', value: 99 });
     const snap = regs.getSnapshot();
     expect(snap.AX).toEqual({ type: 'integer', value: 1 });
     expect(snap.BX).toBeNull();
     expect(snap.CX).toEqual({ type: 'char', value: 65 });
     expect(snap.DX).toBeNull();
+    expect(snap.SI).toBeNull();
+    expect(snap.DI).toEqual({ type: 'integer', value: 99 });
   });
 });

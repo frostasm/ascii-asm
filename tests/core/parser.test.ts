@@ -143,6 +143,18 @@ _start:
     expect(instr.operands[1]).toMatchObject({ kind: 'register', reg: 'AX' });
   });
 
+  it('parses SI and DI as registers', () => {
+    const program = parse(`
+_start:
+    MOV SI, 12
+    MOV DI, SI
+    HALT
+`);
+    expect(program.instructions[0].operands[0]).toMatchObject({ kind: 'register', reg: 'SI' });
+    expect(program.instructions[1].operands[0]).toMatchObject({ kind: 'register', reg: 'DI' });
+    expect(program.instructions[1].operands[1]).toMatchObject({ kind: 'register', reg: 'SI' });
+  });
+
   it('parses MOV register, label', () => {
     const program = parse(`
 _start:
@@ -236,6 +248,18 @@ _start:
 `);
     const instr = program.instructions[1];
     expect(instr.operands[1]).toMatchObject({ kind: 'memory', address: 'BX', dataType: DataType.DWORD });
+  });
+
+  it('parses memory access with SI register address', () => {
+    const program = parse(`
+#memory 16
+_start:
+    MOV SI, 0
+    MOV AX, DWORD [SI]
+    HALT
+`);
+    const instr = program.instructions[1];
+    expect(instr.operands[1]).toMatchObject({ kind: 'memory', address: 'SI', dataType: DataType.DWORD });
   });
 
   it('collects labels correctly', () => {

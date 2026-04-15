@@ -59,7 +59,7 @@ AsciiAsm (Education Assembler) is a browser-based IDE for an educational assembl
 │   │   ├── lexer.ts                  # Tokenizer: source text → Token[]
 │   │   ├── parser.ts                 # Parser: Token[] → Program AST
 │   │   ├── memory.ts                 # Memory model: linear ASCII cell array
-│   │   ├── registers.ts             # Register file: AX, BX, CX, DX + FLAGS
+│   │   ├── registers.ts             # Register file: AX, BX, CX, DX, SI, DI + FLAGS
 │   │   ├── vm.ts                     # Virtual Machine: instruction execution
 │   │   └── debugger.ts              # Debugger: breakpoints, step/continue/stop/reset
 │   │
@@ -266,6 +266,8 @@ Rules:
 | `BX` | Addresses, pointers |
 | `CX` | Counters, loops |
 | `DX` | Auxiliary operand |
+| `SI` | Source index, source pointers |
+| `DI` | Destination index, destination pointers |
 
 > Conventional purpose is only a convention. Any register can be used for any purpose.
 
@@ -336,8 +338,8 @@ Labels can be used directly in branch instructions (`JMP`, `JE`, ...) and can al
 | `imm` | numeric constant (type — integer) |
 | `label` | instruction pointer of the first instruction after the label (type — integer) |
 | `CHAR 'c'` | character constant (type — CHAR) |
-| `TYPE [imm]` | memory at absolute address of type TYPE |
-| `TYPE [reg]` | memory at register address of type TYPE |
+| `TYPE [imm]` | access to memory of type "TYPE" at the numeric constant address imm |
+| `TYPE [reg]` | access to memory of type "TYPE" at the address retrieved from the register reg |
 
 `TYPE` is mandatory for every memory access through `[...]`.
 `CHAR 'c'` can be used as an operand in `MOV reg, CHAR 'c'`, `CMP reg, CHAR 'c'` and `MOV CHAR [addr], 'c'`.
@@ -691,7 +693,7 @@ executes a parsed `Program` one instruction at a time. It relies on three suppor
 |--------|------|----------------|
 | **VM** | `core/vm.ts` | Instruction execution, state machine, I/O delegation |
 | **Memory** | `core/memory.ts` | Linear array of ASCII cells (read/write by type) |
-| **RegisterFile** | `core/registers.ts` | 4 general-purpose registers + FLAGS |
+| **RegisterFile** | `core/registers.ts` | 6 general-purpose registers + FLAGS |
 | **Errors** | `core/errors.ts` | Runtime / parse error hierarchy |
 
 The VM is a **pure-logic** module — it has zero UI dependencies and communicates
@@ -958,7 +960,7 @@ Positive values are zero-padded to fill the full cell width.
 
 ### 3.11.1 Registers
 
-Four general-purpose registers: `AX`, `BX`, `CX`, `DX`.
+Six general-purpose registers: `AX`, `BX`, `CX`, `DX`, `SI`, `DI`.
 Each holds a `RegisterValue | null`:
 
 ```typescript
@@ -1205,7 +1207,7 @@ This mirrors the familiar VS Code "start or continue" paradigm.
    - `runtimeError` → `null`
    - `vmState` → `IDLE`
    - `currentLine` → `null`
-   - `registers` → `{ AX: null, BX: null, CX: null, DX: null }`
+   - `registers` → `{ AX: null, BX: null, CX: null, DX: null, SI: null, DI: null }`
    - `flags` → `{ ZF: false, SF: false, OF: false }`
    - `memory` → `[]`
    - `memorySize` → `0`
@@ -1253,7 +1255,7 @@ When the VM is in `PAUSED` state, the following data is available for inspection
 | Data | Source | Description |
 |------|--------|-------------|
 | **Current Line** | `vm.currentLine` | 1-based source line of the next instruction to execute |
-| **Registers** | `vm.registers.getSnapshot()` | Values and types of AX, BX, CX, DX |
+| **Registers** | `vm.registers.getSnapshot()` | Values and types of AX, BX, CX, DX, SI, DI |
 | **Flags** | `vm.registers.getFlagsSnapshot()` | ZF, SF, OF boolean values |
 | **Memory** | `vm.memory.getSnapshot()` | Full memory array (ASCII codes) |
 | **Stdout** | `vm.stdout` | Accumulated program output |

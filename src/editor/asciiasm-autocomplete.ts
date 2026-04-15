@@ -25,6 +25,8 @@ const REGISTER_COMPLETIONS = [
   { label: 'BX', type: 'variable', info: 'Base/address register' },
   { label: 'CX', type: 'variable', info: 'Counter register' },
   { label: 'DX', type: 'variable', info: 'Auxiliary register' },
+  { label: 'SI', type: 'variable', info: 'Source index / pointer register' },
+  { label: 'DI', type: 'variable', info: 'Destination index / pointer register' },
 ];
 
 const TYPE_COMPLETIONS = [

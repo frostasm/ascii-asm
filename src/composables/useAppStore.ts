@@ -3,7 +3,7 @@ import { Lexer } from '@core/lexer';
 import { Parser } from '@core/parser';
 import { VM, VMIO } from '@core/vm';
 import { Debugger } from '@core/debugger';
-import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights } from '@core/types';
+import { VMState, Program, DataType, DATA_TYPE_SIZE, VMStats, createEmptyStats, SPEED_PRESETS, AccessHighlights, createEmptyHighlights, GENERAL_PURPOSE_REGISTERS } from '@core/types';
 import { ParseError } from '@core/errors';
 import { createEditor, setDebugLine, setEditorReadOnly, setBreakpoints, toggleBreakpointLine, clearEditorHistory, type DebugLineMode } from '@editor/editor-setup';
 import type { AppTheme } from './useTheme';
@@ -19,6 +19,9 @@ _start:
 `;
 
 export function useAppStore() {
+  const createEmptyRegisterState = () =>
+    Object.fromEntries(GENERAL_PURPOSE_REGISTERS.map(reg => [reg, null])) as Record<string, any>;
+
   // ── Internal (non-reactive) ──────────────────────────────
   let vm: VM | null = null;
   let dbg: Debugger | null = null;
@@ -30,7 +33,7 @@ export function useAppStore() {
 
   // ── VM state ─────────────────────────────────────────────
   const vmState = ref<VMState>(VMState.IDLE);
-  const registers = ref<Record<string, any>>({ AX: null, BX: null, CX: null, DX: null });
+  const registers = ref<Record<string, any>>(createEmptyRegisterState());
   const flags = reactive({ ZF: false, SF: false, OF: false });
   const memory = ref<number[]>([]);
   const memorySize = ref(0);
@@ -372,7 +375,7 @@ export function useAppStore() {
     runtimeError.value = null;
     vmState.value = VMState.IDLE;
     currentLine.value = null;
-    registers.value = { AX: null, BX: null, CX: null, DX: null };
+    registers.value = createEmptyRegisterState();
     flags.ZF = false;
     flags.SF = false;
     flags.OF = false;

@@ -65,6 +65,18 @@ _start:
     expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 42 });
   });
 
+  it('MOV supports SI and DI registers', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV SI, 42
+    MOV DI, SI
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('SI' as any)).toEqual({ type: 'integer', value: 42 });
+    expect(vm.registers.get('DI' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
   it('MOV reg, label stores instruction pointer', async () => {
     const { vm } = buildVM(`
 _start:
@@ -271,6 +283,20 @@ target:
     expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 7 });
   });
 
+  it('JMP supports SI register target', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV SI, target
+    JMP SI
+    MOV AX, 0
+target:
+    MOV AX, 9
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 9 });
+  });
+
   it('JMP register with CHAR target raises type mismatch', async () => {
     const { vm } = buildVM(`
 _start:
@@ -387,6 +413,17 @@ _start:
 _start:
     MOV AX, 42
     WRITE AX
+    HALT
+`);
+    await vm.run();
+    expect(vm.stdout).toBe('42');
+  });
+
+  it('WRITE supports DI register', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV DI, 42
+    WRITE DI
     HALT
 `);
     await vm.run();

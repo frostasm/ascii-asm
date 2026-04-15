@@ -1,7 +1,7 @@
-import { Register, Flags, RegisterValue } from './types';
+import { Register, Flags, RegisterValue, GENERAL_PURPOSE_REGISTERS } from './types';
 
 /**
- * AsciiAsm Register File — 4 general-purpose registers + FLAGS.
+ * AsciiAsm Register File — general-purpose registers + FLAGS.
  */
 export class RegisterFile {
   private values: Map<Register, RegisterValue | null> = new Map();
@@ -9,10 +9,9 @@ export class RegisterFile {
 
   constructor() {
     // Initialize registers as null (unset)
-    this.values.set(Register.AX, null);
-    this.values.set(Register.BX, null);
-    this.values.set(Register.CX, null);
-    this.values.set(Register.DX, null);
+    for (const reg of GENERAL_PURPOSE_REGISTERS) {
+      this.values.set(reg, null);
+    }
 
     this.flags = { ZF: false, SF: false, OF: false };
   }
@@ -27,10 +26,9 @@ export class RegisterFile {
 
   /** Reset all registers and flags. */
   reset(): void {
-    this.values.set(Register.AX, null);
-    this.values.set(Register.BX, null);
-    this.values.set(Register.CX, null);
-    this.values.set(Register.DX, null);
+    for (const reg of GENERAL_PURPOSE_REGISTERS) {
+      this.values.set(reg, null);
+    }
     this.flags = { ZF: false, SF: false, OF: false };
   }
 
@@ -47,12 +45,9 @@ export class RegisterFile {
 
   /** Returns a snapshot for UI display. */
   getSnapshot(): Record<string, RegisterValue | null> {
-    return {
-      AX: this.values.get(Register.AX) ?? null,
-      BX: this.values.get(Register.BX) ?? null,
-      CX: this.values.get(Register.CX) ?? null,
-      DX: this.values.get(Register.DX) ?? null,
-    };
+    return Object.fromEntries(
+      GENERAL_PURPOSE_REGISTERS.map(reg => [reg, this.values.get(reg) ?? null]),
+    );
   }
 
   /** Returns a copy of current flags. */

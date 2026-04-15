@@ -53,6 +53,13 @@ describe('Lexer', () => {
     expect(tokens[3]).toMatchObject({ type: TokenType.REGISTER, value: 'BX' });
   });
 
+  it('tokenizes SI and DI registers', () => {
+    const lexer = new Lexer('MOV SI, DI');
+    const tokens = lexer.tokenize();
+    expect(tokens[1]).toMatchObject({ type: TokenType.REGISTER, value: 'SI' });
+    expect(tokens[3]).toMatchObject({ type: TokenType.REGISTER, value: 'DI' });
+  });
+
   it('tokenizes label definitions', () => {
     const lexer = new Lexer('_start:');
     const tokens = lexer.tokenize();
