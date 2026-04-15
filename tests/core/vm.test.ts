@@ -65,6 +65,18 @@ _start:
     expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 42 });
   });
 
+  it('MOV reg, label stores instruction pointer', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, target
+    HALT
+target:
+    HALT
+`);
+    await vm.step();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 2 });
+  });
+
   it('MOV reg, memory', async () => {
     const { vm } = buildVM(`
 #memory 16
@@ -243,6 +255,44 @@ skip:
 `);
     await vm.run();
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 1 });
+  });
+
+  it('JMP register jumps indirectly', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, target
+    JMP AX
+    MOV BX, 0
+target:
+    MOV BX, 7
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 7 });
+  });
+
+  it('JMP register with CHAR target raises type mismatch', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, CHAR 'A'
+    JMP AX
+    HALT
+`);
+    const result = await vm.run();
+    expect(vm.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Type Mismatch');
+  });
+
+  it('JMP register with invalid instruction pointer raises runtime error', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 99
+    JMP AX
+    HALT
+`);
+    const result = await vm.run();
+    expect(vm.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Invalid jump target: 99');
   });
 
   // ── Loops ────────────────────────────────────────────

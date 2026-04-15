@@ -273,6 +273,7 @@ Each register has a **dynamic type** — **CHAR** or **integer** — determined
 by the last write operation:
 
 - `MOV reg, imm` or `MOV reg, WORD/DWORD/QWORD [addr]` → register type becomes **integer**.
+- `MOV reg, label` → register type becomes **integer** and stores the instruction pointer of the first instruction after that label.
 - `MOV reg, CHAR 'c'` or `MOV reg, CHAR [addr]` → register type becomes **CHAR**.
 - `MOV reg, reg2` → copies both value and type.
 
@@ -324,7 +325,8 @@ _start:
 ```
 
 The `_start:` label is mandatory. Labels in code: `identifier:` at the beginning of a line.
-Labels are used only in branch instructions (`JMP`, `JE`, ...).
+When used as an operand, a label resolves to the instruction pointer of the first instruction after that label.
+Labels can be used directly in branch instructions (`JMP`, `JE`, ...) and can also be loaded into an integer register via `MOV reg, label`.
 
 ### 2.3.3 Addressing
 
@@ -332,6 +334,7 @@ Labels are used only in branch instructions (`JMP`, `JE`, ...).
 |------|---------|
 | `reg` | register value (type is dynamic) |
 | `imm` | numeric constant (type — integer) |
+| `label` | instruction pointer of the first instruction after the label (type — integer) |
 | `CHAR 'c'` | character constant (type — CHAR) |
 | `TYPE [imm]` | memory at absolute address of type TYPE |
 | `TYPE [reg]` | memory at register address of type TYPE |
@@ -348,6 +351,7 @@ Labels are used only in branch instructions (`JMP`, `JE`, ...).
 ```nasm
 MOV dst, src                ; general command format
 MOV reg, imm                ; reg ← number (register type → integer)
+MOV reg, label              ; reg ← instruction pointer of label (register type → integer)
 MOV reg, CHAR 'c'           ; reg ← character (register type → CHAR)
 MOV reg, reg2               ; reg ← reg2 (value and type are copied)
 MOV reg, TYPE [addr]        ; reg ← value from memory (register type → according to TYPE)
@@ -359,6 +363,7 @@ MOV CHAR [addr], 'c'        ; memory CHAR ← character literal
 `[addr]` — `[imm]` or `[reg]`.
 
 **Type rules:**
+- `MOV reg, label` — reg receives an integer instruction pointer for the first instruction after the label.
 - `MOV WORD/DWORD/QWORD [addr], reg` — reg **must** contain an integer, otherwise `Runtime Error: Type Mismatch`.
 - `MOV CHAR [addr], reg` — reg **must** contain CHAR, otherwise `Runtime Error: Type Mismatch`.
 - `MOV CHAR [addr], imm` — **forbidden** (`Runtime Error: Type Mismatch`). Use `MOV CHAR [addr], 'c'`.
@@ -423,17 +428,34 @@ TYPE: WORD / DWORD / QWORD / CHAR. TEXT is not supported.
 ### 2.4.4 Branches
 
 All numeric types are signed — only signed branch conditions.
+A jump target may be either:
+
+- a label, resolved to the instruction pointer of the first instruction after that label
+- an integer register containing a valid instruction pointer
+
+Using a CHAR register as a jump target causes `Runtime Error: Type Mismatch`.
+Using an integer value that does not point to a valid instruction causes a runtime error.
 
 ```nasm
-JMP label   ; unconditional
-JO  label   ; OF = 1  jump if overflow occurred
-JNO label   ; OF = 0  jump if no overflow
-JE  label   ; ZF=1          equal (==)
-JNE label   ; ZF=0          not equal (!=)
-JL  label   ; SF=1, ZF=0    less than (<)
-JLE label   ; SF=1 or ZF=1  less than or equal (<=)
-JG  label   ; SF=0, ZF=0    greater than (>)
-JGE label   ; SF=0 or ZF=1  greater than or equal (>=)
+JMP target   ; unconditional
+JO  target   ; OF = 1  jump if overflow occurred
+JNO target   ; OF = 0  jump if no overflow
+JE  target   ; ZF=1          equal (==)
+JNE target   ; ZF=0          not equal (!=)
+JL  target   ; SF=1, ZF=0    less than (<)
+JLE target   ; SF=1 or ZF=1  less than or equal (<=)
+JG  target   ; SF=0, ZF=0    greater than (>)
+JGE target   ; SF=0 or ZF=1  greater than or equal (>=)
+```
+
+Example:
+
+```nasm
+  MOV AX, fn_sum    ; AX ← instruction pointer of the first instruction under fn_sum
+  JMP AX            ; jump indirectly through AX
+
+fn_sum:
+  ; some code
 ```
 
 ### 2.4.5 READ and WRITE — Input and Output
@@ -605,15 +627,15 @@ _start:
 
 | Instruction | Description | FLAGS |
 |-------------|-------------|:-----:|
-| `MOV dst, src` | Move (types must match) | Yes |
+| `MOV dst, src` | Move (types must match; `MOV reg, label` stores an instruction pointer) | Yes |
 | `ADD dst, src` | Addition (CHAR±integer allowed) | Yes |
 | `SUB dst, src` | Subtraction (CHAR±integer allowed) | Yes |
 | `CMP a, b` | Comparison (types must match) | Yes |
-| `JMP label` | Unconditional jump | No |
-| `JE / JNE label` | Equal / not equal | No |
-| `JL / JLE label` | Less than / less than or equal | No |
-| `JG / JGE label` | Greater than / greater than or equal | No |
-| `JO / JNO label` | Overflow / no overflow | No |
+| `JMP target` | Unconditional jump to label or integer register target | No |
+| `JE / JNE target` | Equal / not equal; target is label or integer register | No |
+| `JL / JLE target` | Less than / less than or equal; target is label or integer register | No |
+| `JG / JGE target` | Greater than / greater than or equal; target is label or integer register | No |
+| `JO / JNO target` | Overflow / no overflow; target is label or integer register | No |
 | `READ TYPE [addr]` | Read from stdin into memory | Yes |
 | `READ TYPE [addr], "msg"` | Read from stdin with prompt message | Yes |
 | `READ TEXT [addr], n` | Read string (max n-1 characters) | Yes |
@@ -821,6 +843,7 @@ Copies a value from source to destination. Combinations:
 |------------|--------|----------|
 | `reg` | `reg2` | Copy value + type |
 | `reg` | `imm` | Register type → integer |
+| `reg` | `label` | Register type → integer instruction pointer |
 | `reg` | `CHAR 'c'` | Register type → char |
 | `reg` | `TYPE [addr]` | Register type → per TYPE |
 | `TYPE [addr]` | `reg` | Type must match (CHAR↔CHAR, integer↔integer) |
@@ -848,7 +871,8 @@ Both operands must be the same category (CHAR↔CHAR or integer↔integer).
 
 ### 3.8.4 `executeJump(instr)`
 
-Resolves the label operand to an instruction index. Evaluates the jump condition from FLAGS:
+Resolves the jump target and evaluates the jump condition from FLAGS. The target may be either a label
+or an integer register value. CHAR registers are invalid jump targets.
 
 | Mnemonic | Condition |
 |----------|-----------|
@@ -862,7 +886,7 @@ Resolves the label operand to an instruction index. Evaluates the jump condition
 | `JO` | `OF` |
 | `JNO` | `!OF` |
 
-If the condition is true, `ip` is set to the target index. Otherwise `ip++`.
+If the condition is true, `ip` is set to the resolved target instruction index. Otherwise `ip++`.
 
 ### 3.8.5 `executeRead(instr)`
 

@@ -485,15 +485,7 @@ export class VM {
   // ── Jumps ─────────────────────────────────────────────────
 
   private executeJump(instr: Instruction): void {
-    const labelOp = instr.operands[0];
-    if (labelOp.kind !== 'label') {
-      throw new RuntimeError('Expected label for jump', instr.line);
-    }
-
-    const target = this.program.labels.get(labelOp.name);
-    if (target === undefined) {
-      throw new RuntimeError(`Undefined label: ${labelOp.name}`, instr.line);
-    }
+    const target = this.resolveJumpTarget(instr.operands[0], instr.line);
 
     const flags = this.registers.flags;
     let shouldJump = false;
@@ -645,6 +637,13 @@ export class VM {
         return this.getRegisterValue(op.reg, line);
       case 'immediate':
         return { type: 'integer', value: op.value };
+      case 'label': {
+        const target = this.program.labels.get(op.name);
+        if (target === undefined) {
+          throw new RuntimeError(`Undefined label: ${op.name}`, line);
+        }
+        return { type: 'integer', value: target };
+      }
       case 'char_immediate':
         return { type: 'char', value: op.value.charCodeAt(0) };
       case 'memory': {
@@ -664,6 +663,35 @@ export class VM {
       default:
         throw new RuntimeError('Invalid source operand', line);
     }
+  }
+
+  /**
+   * Resolve a jump target operand to a valid instruction index.
+   */
+  private resolveJumpTarget(op: Operand, line: number): number {
+    let target: number;
+
+    if (op.kind === 'label') {
+      const resolved = this.program.labels.get(op.name);
+      if (resolved === undefined) {
+        throw new RuntimeError(`Undefined label: ${op.name}`, line);
+      }
+      target = resolved;
+    } else if (op.kind === 'register') {
+      const regVal = this.getRegisterValue(op.reg, line);
+      if (regVal.type !== 'integer') {
+        throw new TypeMismatchError(line);
+      }
+      target = regVal.value;
+    } else {
+      throw new RuntimeError('Expected label or integer register for jump', line);
+    }
+
+    if (!Number.isInteger(target) || target < 0 || target >= this.program.instructions.length) {
+      throw new RuntimeError(`Invalid jump target: ${target}`, line);
+    }
+
+    return target;
   }
 
   /**

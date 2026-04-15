@@ -79,9 +79,9 @@ export class Parser {
       this.errors.push(new MissingHaltError());
     }
 
-    // Validate label references in jump instructions
+    // Validate label references in instructions that allow label operands
     for (const instr of instructions) {
-      if (JUMP_MNEMONICS.has(instr.mnemonic)) {
+      if (JUMP_MNEMONICS.has(instr.mnemonic) || instr.mnemonic === Mnemonic.MOV) {
         for (const op of instr.operands) {
           if (op.kind === 'label' && !labels.has(op.name)) {
             this.errors.push(new UndefinedLabelError(op.name, instr.line));
@@ -317,9 +317,9 @@ export class Parser {
       return { kind: 'memory', address: addrOperand, dataType };
     }
 
-    // Label reference (for jump instructions)
+    // Label reference (for jump instructions and MOV reg, label)
     if (tok.type === TokenType.IDENTIFIER) {
-      if (JUMP_MNEMONICS.has(context)) {
+      if (JUMP_MNEMONICS.has(context) || context === Mnemonic.MOV) {
         this.advance();
         return { kind: 'label', name: tok.value };
       }

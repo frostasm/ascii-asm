@@ -143,6 +143,20 @@ _start:
     expect(instr.operands[1]).toMatchObject({ kind: 'register', reg: 'AX' });
   });
 
+  it('parses MOV register, label', () => {
+    const program = parse(`
+_start:
+    MOV AX, done
+    HALT
+done:
+    HALT
+`);
+    const instr = program.instructions[0];
+    expect(instr.operands[0]).toMatchObject({ kind: 'register', reg: 'AX' });
+    expect(instr.operands[1]).toMatchObject({ kind: 'label', name: 'done' });
+    expect(program.labels.get('done')).toBe(2);
+  });
+
   it('parses ADD and SUB', () => {
     const program = parse(`
 _start:
@@ -329,6 +343,15 @@ _start:
     const { errors } = tryParse(`
 _start:
     JMP nonexistent
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);
+  });
+
+  it('reports undefined label in MOV', () => {
+    const { errors } = tryParse(`
+_start:
+    MOV AX, nonexistent
     HALT
 `);
     expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);
