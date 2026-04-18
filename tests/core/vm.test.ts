@@ -441,6 +441,134 @@ _start:
     expect(result.error).toContain('Invalid jump target: 99');
   });
 
+  it('CALL label jumps to subroutine and RET returns to next instruction', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    CALL fn
+    MOV AX, 7
+    HALT
+fn:
+    MOV BX, 5
+    RET
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 7 });
+    expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 5 });
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 32 });
+  });
+
+  it('CALL register jumps indirectly and RET returns', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    MOV AX, fn
+    CALL AX
+    MOV BX, 9
+    HALT
+fn:
+    MOV CX, 4
+    RET
+`);
+    await vm.run();
+    expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 9 });
+    expect(vm.registers.get('CX' as any)).toEqual({ type: 'integer', value: 4 });
+  });
+
+  it('nested CALL instructions restore return addresses in LIFO order', async () => {
+    const { vm } = buildVM(`
+#memory 64
+_start:
+    CALL first
+    MOV AX, 3
+    HALT
+first:
+    MOV BX, 1
+    CALL second
+    MOV CX, 2
+    RET
+second:
+    MOV DX, 4
+    RET
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 3 });
+    expect(vm.registers.get('BX' as any)).toEqual({ type: 'integer', value: 1 });
+    expect(vm.registers.get('CX' as any)).toEqual({ type: 'integer', value: 2 });
+    expect(vm.registers.get('DX' as any)).toEqual({ type: 'integer', value: 4 });
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 64 });
+  });
+
+  it('CALL stores return address as DWORD below SP', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    CALL fn
+    HALT
+fn:
+    HALT
+`);
+    await vm.step();
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 28 });
+    expect(vm.memory.readInteger(28, 'DWORD' as any)).toBe(1);
+  });
+
+  it('CALL with CHAR register target raises type mismatch', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    MOV AX, CHAR 'A'
+    CALL AX
+    HALT
+`);
+    const result = await vm.run();
+    expect(vm.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Type Mismatch');
+  });
+
+  it('RET with insufficient stack space raises invalid memory access', async () => {
+    const { vm } = buildVM(`
+#memory 8
+_start:
+    RET
+    HALT
+`);
+    const result = await vm.run();
+    expect(vm.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Invalid memory access');
+  });
+
+  it('RET with invalid restored instruction pointer raises runtime error', async () => {
+    const { vm } = buildVM(`
+#memory 16
+_start:
+    MOV SP, 0
+    MOV DWORD [0], 99
+    RET
+    HALT
+`);
+    const result = await vm.run();
+    expect(vm.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Invalid jump target: 99');
+  });
+
+  it('CALL and RET do not modify FLAGS', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    MOV AX, 1
+    CMP AX, 1
+    CALL fn
+    HALT
+fn:
+    RET
+`);
+    await vm.run();
+    expect(vm.registers.flags.ZF).toBe(true);
+    expect(vm.registers.flags.SF).toBe(false);
+    expect(vm.registers.flags.OF).toBe(false);
+  });
+
   // ── Loops ────────────────────────────────────────────
 
   it('loop: sum from 1 to 5', async () => {
@@ -1017,6 +1145,21 @@ _start:
     await vm.run();
     expect(vm.stats.instructionCounts['MOV']).toBe(2);
     expect(vm.stats.instructionCounts['ADD']).toBe(1);
+    expect(vm.stats.instructionCounts['HALT']).toBe(1);
+  });
+
+  it('stats count CALL and RET instructions', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    CALL fn
+    HALT
+fn:
+    RET
+`);
+    await vm.run();
+    expect(vm.stats.instructionCounts['CALL']).toBe(1);
+    expect(vm.stats.instructionCounts['RET']).toBe(1);
     expect(vm.stats.instructionCounts['HALT']).toBe(1);
   });
 

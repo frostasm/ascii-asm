@@ -6,6 +6,8 @@ const MNEMONIC_COMPLETIONS = [
   { label: 'SUB', type: 'keyword', info: 'Subtraction: SUB dst, src' },
   { label: 'CMP', type: 'keyword', info: 'Compare: CMP a, b' },
   { label: 'JMP', type: 'keyword', info: 'Unconditional jump: JMP label' },
+  { label: 'CALL', type: 'keyword', info: 'Call subroutine: CALL label|reg' },
+  { label: 'RET', type: 'keyword', info: 'Return from subroutine via stack' },
   { label: 'JE', type: 'keyword', info: 'Jump if equal (ZF=1)' },
   { label: 'JNE', type: 'keyword', info: 'Jump if not equal (ZF=0)' },
   { label: 'JL', type: 'keyword', info: 'Jump if less (SF=1, ZF=0)' },

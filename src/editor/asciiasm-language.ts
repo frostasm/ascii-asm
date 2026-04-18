@@ -3,7 +3,7 @@ import { tags } from '@lezer/highlight';
 
 const MNEMONICS = new Set([
   'MOV', 'ADD', 'SUB', 'CMP',
-  'JMP', 'JE', 'JNE', 'JL', 'JLE', 'JG', 'JGE', 'JO', 'JNO',
+  'JMP', 'CALL', 'RET', 'JE', 'JNE', 'JL', 'JLE', 'JG', 'JGE', 'JO', 'JNO',
   'READ', 'WRITE', 'WRITELN', 'HALT',
 ]);
 

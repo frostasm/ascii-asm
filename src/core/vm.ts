@@ -269,6 +269,8 @@ export class VM {
       case Mnemonic.ADD:   return this.executeAdd(instr);
       case Mnemonic.SUB:   return this.executeSub(instr);
       case Mnemonic.CMP:   return this.executeCmp(instr);
+      case Mnemonic.CALL:  return this.executeCall(instr);
+      case Mnemonic.RET:   return this.executeRet(instr);
       case Mnemonic.READ:  return this.executeRead(instr);
       case Mnemonic.WRITE: return this.executeWrite(instr, false);
       case Mnemonic.WRITELN: return this.executeWrite(instr, true);
@@ -518,6 +520,39 @@ export class VM {
     }
   }
 
+  // ── CALL / RET ────────────────────────────────────────────
+
+  private executeCall(instr: Instruction): void {
+    const line = instr.line;
+    const target = this.resolveJumpTarget(instr.operands[0], line);
+    const sp = this.getIntegerRegister(Register.SP, line);
+    const newSp = sp - DATA_TYPE_SIZE[DataType.DWORD];
+    const returnIp = this.ip + 1;
+
+    this.registers.set(Register.SP, { type: 'integer', value: newSp });
+    this.stats.registerWrites++;
+    this.lastAccess.regWrites.push(Register.SP as string);
+
+    this.memory.writeInteger(newSp, DataType.DWORD, returnIp, line);
+    this.trackMemoryWrite(newSp, DataType.DWORD);
+
+    this.ip = target;
+  }
+
+  private executeRet(instr: Instruction): void {
+    const line = instr.line;
+    const sp = this.getIntegerRegister(Register.SP, line);
+    const returnIp = this.memory.readInteger(sp, DataType.DWORD, line);
+    this.trackMemoryRead(sp, DataType.DWORD);
+
+    const restoredSp = sp + DATA_TYPE_SIZE[DataType.DWORD];
+    this.registers.set(Register.SP, { type: 'integer', value: restoredSp });
+    this.stats.registerWrites++;
+    this.lastAccess.regWrites.push(Register.SP as string);
+
+    this.ip = this.validateInstructionTarget(returnIp, line);
+  }
+
   // ── READ ──────────────────────────────────────────────────
 
   private async executeRead(instr: Instruction): Promise<void> {
@@ -696,11 +731,7 @@ export class VM {
       throw new RuntimeError('Expected label or integer register for jump', line);
     }
 
-    if (!Number.isInteger(target) || target < 0 || target >= this.program.instructions.length) {
-      throw new RuntimeError(`Invalid jump target: ${target}`, line);
-    }
-
-    return target;
+    return this.validateInstructionTarget(target, line);
   }
 
   /**
@@ -734,6 +765,21 @@ export class VM {
     this.stats.registerReads++;
     this.lastAccess.regReads.push(reg as string);
     return val;
+  }
+
+  private getIntegerRegister(reg: Register, line: number): number {
+    const val = this.getRegisterValue(reg, line);
+    if (val.type !== 'integer') {
+      throw new TypeMismatchError(line);
+    }
+    return val.value;
+  }
+
+  private validateInstructionTarget(target: number, line: number): number {
+    if (!Number.isInteger(target) || target < 0 || target >= this.program.instructions.length) {
+      throw new RuntimeError(`Invalid jump target: ${target}`, line);
+    }
+    return target;
   }
 
   private assertRegisterWritable(reg: Register, line: number): void {

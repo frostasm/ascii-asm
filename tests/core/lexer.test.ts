@@ -86,6 +86,14 @@ describe('Lexer', () => {
     expect(tokens[1]).toMatchObject({ type: TokenType.IDENTIFIER, value: 'done' });
   });
 
+  it('tokenizes CALL and RET mnemonics', () => {
+    const lexer = new Lexer('CALL fn\nRET');
+    const tokens = lexer.tokenize();
+    expect(tokens[0]).toMatchObject({ type: TokenType.MNEMONIC, value: 'CALL' });
+    expect(tokens[1]).toMatchObject({ type: TokenType.IDENTIFIER, value: 'fn' });
+    expect(tokens[3]).toMatchObject({ type: TokenType.MNEMONIC, value: 'RET' });
+  });
+
   it('tokenizes character literals', () => {
     const lexer = new Lexer("CHAR 'A'");
     const tokens = lexer.tokenize();

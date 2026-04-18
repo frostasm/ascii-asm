@@ -237,7 +237,7 @@ export class Parser {
     const operands: Operand[] = [];
 
     // HALT has no operands
-    if (mnemonic === Mnemonic.HALT) {
+    if (mnemonic === Mnemonic.HALT || mnemonic === Mnemonic.RET) {
       this.skipToEndOfLine();
       return { mnemonic, operands, line };
     }

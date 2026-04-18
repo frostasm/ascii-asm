@@ -91,6 +91,8 @@ export enum Mnemonic {
   SUB = 'SUB',
   CMP = 'CMP',
   JMP = 'JMP',
+  CALL = 'CALL',
+  RET = 'RET',
   JE = 'JE',
   JNE = 'JNE',
   JL = 'JL',
@@ -106,7 +108,7 @@ export enum Mnemonic {
 }
 
 export const JUMP_MNEMONICS = new Set<Mnemonic>([
-  Mnemonic.JMP, Mnemonic.JE, Mnemonic.JNE,
+  Mnemonic.JMP, Mnemonic.CALL, Mnemonic.JE, Mnemonic.JNE,
   Mnemonic.JL, Mnemonic.JLE, Mnemonic.JG, Mnemonic.JGE,
   Mnemonic.JO, Mnemonic.JNO,
 ]);

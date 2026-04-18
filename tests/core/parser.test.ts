@@ -224,6 +224,39 @@ done:
     expect(program.labels.get('done')).toBe(1); // instruction index 1
   });
 
+  it('parses CALL instruction with label target', () => {
+    const program = parse(`
+_start:
+    CALL fn
+    HALT
+fn:
+    RET
+`);
+    expect(program.instructions[0].mnemonic).toBe(Mnemonic.CALL);
+    expect(program.instructions[0].operands[0]).toMatchObject({ kind: 'label', name: 'fn' });
+    expect(program.labels.get('fn')).toBe(2);
+  });
+
+  it('parses CALL instruction with register target', () => {
+    const program = parse(`
+_start:
+    CALL AX
+    HALT
+`);
+    expect(program.instructions[0].mnemonic).toBe(Mnemonic.CALL);
+    expect(program.instructions[0].operands[0]).toMatchObject({ kind: 'register', reg: 'AX' });
+  });
+
+  it('parses RET without operands', () => {
+    const program = parse(`
+_start:
+    RET
+    HALT
+`);
+    expect(program.instructions[0].mnemonic).toBe(Mnemonic.RET);
+    expect(program.instructions[0].operands).toHaveLength(0);
+  });
+
   it('parses READ and WRITE', () => {
     const program = parse(`
 #memory 8
@@ -420,6 +453,15 @@ _start:
     const { errors } = tryParse(`
 _start:
     JMP nonexistent
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);
+  });
+
+  it('reports undefined label in CALL', () => {
+    const { errors } = tryParse(`
+_start:
+    CALL nonexistent
     HALT
 `);
     expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);

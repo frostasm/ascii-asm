@@ -273,6 +273,7 @@ Rules:
 
 > Conventional purpose is only a convention. Any register can be used for any purpose.
 > On VM initialization and every `reset()`, `SP` is preloaded with the configured `#memory` size.
+> `SP` is also used by `CALL`/`RET` as a downward-growing call stack pointer. Saved return addresses always use the `DWORD` memory format, so every instruction address in AsciiAsm occupies 4 cells when stored on the stack.
 
 Each register has a **dynamic type** — **CHAR** or **integer** — determined
 by the last write operation:
@@ -448,6 +449,8 @@ Using an integer value that does not point to a valid instruction causes a runti
 
 ```nasm
 JMP target   ; unconditional
+CALL target  ; push return instruction address as DWORD via SP, then jump
+RET          ; pop DWORD return instruction address from [SP] and jump back
 JO  target   ; OF = 1  jump if overflow occurred
 JNO target   ; OF = 0  jump if no overflow
 JE  target   ; ZF=1          equal (==)
@@ -467,6 +470,16 @@ Example:
 fn_sum:
   ; some code
 ```
+
+`CALL`/`RET` use the normal VM memory as a call stack:
+
+- The stack grows toward lower memory addresses.
+- `CALL target` decrements `SP` by 4, stores the next instruction pointer at `DWORD [SP]`, then jumps to `target`.
+- `RET` reads the saved return instruction pointer from `DWORD [SP]`, increments `SP` by 4, then jumps to the restored instruction.
+- Stored return addresses always use `DWORD`, because AsciiAsm instruction addresses have `DWORD` size when written to memory.
+- `CALL` requires 4 writable memory cells below the current `SP`; otherwise a runtime memory error occurs.
+- `RET` requires a valid saved `DWORD` return address at the current `SP`; invalid stack memory access or an invalid restored instruction pointer causes a runtime error.
+- `CALL` and `RET` do not modify FLAGS.
 
 ### 2.4.5 READ and WRITE — Input and Output
 
@@ -615,6 +628,68 @@ _start:
   HALT
 ```
 
+### Subroutine Call by Label
+
+```nasm
+#memory 32
+
+_start:
+  CALL greet
+  WRITELN "Back in main"
+  HALT
+
+greet:
+  WRITELN "Hello from subroutine"
+  RET
+```
+
+### Indirect Subroutine Call Through Register
+
+```nasm
+#memory 32
+
+_start:
+  MOV AX, print_msg
+  CALL AX
+  HALT
+
+print_msg:
+  WRITELN "Indirect call works"
+  RET
+```
+
+### Multiply via Subroutine (`fn_mul`)
+
+```nasm
+#memory 32
+#data 0, DWORD 6
+#data 4, DWORD 7
+
+_start:
+  MOV AX, DWORD [0]      ; arg1 = left operand
+  MOV BX, DWORD [4]      ; arg2 = right operand
+  CALL fn_mul
+  WRITE "Product: "
+  WRITELN CX             ; return value = AX * BX
+  HALT
+
+fn_mul:
+  ; AX = first argument
+  ; BX = second argument
+  ; CX = return value
+  MOV CX, 0
+
+mul_loop:
+  CMP BX, 0
+  JE  mul_done
+  ADD CX, AX
+  SUB BX, 1
+  JMP mul_loop
+
+mul_done:
+  RET
+```
+
 ### Working with CHAR
 
 ```nasm
@@ -656,6 +731,8 @@ _start:
 | `SUB dst, src` | Subtraction (CHAR±integer allowed) | Yes |
 | `CMP a, b` | Comparison (types must match) | Yes |
 | `JMP target` | Unconditional jump to label or integer register target | No |
+| `CALL target` | Push next instruction address as `DWORD` at `DWORD [SP-4]`, update `SP`, jump to label or integer register target | No |
+| `RET` | Pop `DWORD` return address from `DWORD [SP]`, restore `SP`, jump back | No |
 | `JE / JNE target` | Equal / not equal; target is label or integer register | No |
 | `JL / JLE target` | Less than / less than or equal; target is label or integer register | No |
 | `JG / JGE target` | Greater than / greater than or equal; target is label or integer register | No |
@@ -697,7 +774,7 @@ referring to it by name: `MOV AX, DWORD [x]`.
 ### Other Planned Features
 
 - **Type conversion** — `CAST` instruction for explicit integer↔CHAR conversion (via ASCII code).
-- **Stack and subroutines** — `PUSH`, `POP`, `CALL`, `RET`.
+- **Stack operations** — `PUSH`, `POP`.
 - **Multiplication / division** — `MUL`, `DIV`.
 - **Macros** — defining custom abbreviations.
 
