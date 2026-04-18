@@ -12,6 +12,8 @@ describe('RegisterFile', () => {
     expect(regs.get(Register.DX)).toBeNull();
     expect(regs.get(Register.SI)).toBeNull();
     expect(regs.get(Register.DI)).toBeNull();
+    expect(regs.get(Register.BP)).toBeNull();
+    expect(regs.get(Register.SP)).toBeNull();
   });
 
   it('initializes flags as cleared', () => {
@@ -77,6 +79,7 @@ describe('RegisterFile', () => {
     regs.set(Register.AX, { type: 'integer', value: 1 });
     regs.set(Register.CX, { type: 'char', value: 65 });
     regs.set(Register.DI, { type: 'integer', value: 99 });
+    regs.set(Register.SP, { type: 'integer', value: 123 });
     const snap = regs.getSnapshot(7);
     expect(snap.IP).toEqual({ type: 'integer', value: 7 });
     expect(snap.AX).toEqual({ type: 'integer', value: 1 });
@@ -85,6 +88,8 @@ describe('RegisterFile', () => {
     expect(snap.DX).toBeNull();
     expect(snap.SI).toBeNull();
     expect(snap.DI).toEqual({ type: 'integer', value: 99 });
+    expect(snap.BP).toBeNull();
+    expect(snap.SP).toEqual({ type: 'integer', value: 123 });
   });
 
   it('rejects writes to IP', () => {

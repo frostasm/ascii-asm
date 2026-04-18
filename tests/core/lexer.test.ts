@@ -60,6 +60,13 @@ describe('Lexer', () => {
     expect(tokens[3]).toMatchObject({ type: TokenType.REGISTER, value: 'DI' });
   });
 
+  it('tokenizes BP and SP registers', () => {
+    const lexer = new Lexer('MOV BP, SP');
+    const tokens = lexer.tokenize();
+    expect(tokens[1]).toMatchObject({ type: TokenType.REGISTER, value: 'BP' });
+    expect(tokens[3]).toMatchObject({ type: TokenType.REGISTER, value: 'SP' });
+  });
+
   it('tokenizes IP register', () => {
     const lexer = new Lexer('MOV AX, IP');
     const tokens = lexer.tokenize();

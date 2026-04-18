@@ -7,7 +7,7 @@ const MNEMONICS = new Set([
   'READ', 'WRITE', 'WRITELN', 'HALT',
 ]);
 
-const REGISTERS = new Set(['IP', 'AX', 'BX', 'CX', 'DX', 'SI', 'DI']);
+const REGISTERS = new Set(['IP', 'AX', 'BX', 'CX', 'DX', 'SI', 'DI', 'BP', 'SP']);
 const TYPE_PREFIXES = new Set(['CHAR', 'WORD', 'DWORD', 'QWORD', 'TEXT']);
 
 interface AsciiAsmState {

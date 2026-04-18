@@ -59,7 +59,7 @@ AsciiAsm (Education Assembler) is a browser-based IDE for an educational assembl
 │   │   ├── lexer.ts                  # Tokenizer: source text → Token[]
 │   │   ├── parser.ts                 # Parser: Token[] → Program AST
 │   │   ├── memory.ts                 # Memory model: linear ASCII cell array
-│   │   ├── registers.ts             # Register file: AX, BX, CX, DX, SI, DI + FLAGS
+│   │   ├── registers.ts             # Register file: AX, BX, CX, DX, SI, DI, BP, SP + FLAGS
 │   │   ├── vm.ts                     # Virtual Machine: instruction execution
 │   │   └── debugger.ts              # Debugger: breakpoints, step/continue/stop/reset
 │   │
@@ -268,8 +268,11 @@ Rules:
 | `DX` | Auxiliary operand |
 | `SI` | Source index, source pointers |
 | `DI` | Destination index, destination pointers |
+| `BP` | Base pointer, frame-relative addressing |
+| `SP` | Stack pointer, top-of-stack tracking |
 
 > Conventional purpose is only a convention. Any register can be used for any purpose.
+> On VM initialization and every `reset()`, `SP` is preloaded with the configured `#memory` size.
 
 Each register has a **dynamic type** — **CHAR** or **integer** — determined
 by the last write operation:
@@ -711,7 +714,7 @@ executes a parsed `Program` one instruction at a time. It relies on three suppor
 |--------|------|----------------|
 | **VM** | `core/vm.ts` | Instruction execution, state machine, I/O delegation |
 | **Memory** | `core/memory.ts` | Linear array of ASCII cells (read/write by type) |
-| **RegisterFile** | `core/registers.ts` | 6 writable general-purpose registers + read-only `IP` snapshot + FLAGS |
+| **RegisterFile** | `core/registers.ts` | 8 writable general-purpose registers + read-only `IP` snapshot + FLAGS |
 | **Errors** | `core/errors.ts` | Runtime / parse error hierarchy |
 
 The VM is a **pure-logic** module — it has zero UI dependencies and communicates
@@ -780,8 +783,9 @@ new VM(program: Program, io: VMIO)
 3. Allocate `Memory` with `program.memory.size` and optional `initValue`.
 4. Apply all `#data` directives to memory via `memory.initializeData()`.
 5. Create a fresh `RegisterFile` (all registers `null`, all flags `false`).
-6. Set instruction pointer (`ip`) to the `_start` label index (or `0`).
-7. State = `IDLE`.
+6. Preload `SP` with `program.memory.size`.
+7. Set instruction pointer (`ip`) to the `_start` label index (or `0`).
+8. State = `IDLE`.
 
 ## 3.6 Core Methods
 
@@ -831,9 +835,10 @@ reset(): void
 1. Re-allocate `Memory` (same size/init as constructor).
 2. Re-apply all `#data` directives.
 3. Reset `RegisterFile` (all registers `null`, all flags `false`).
-4. Clear `stdout`.
-5. Set state to `IDLE`.
-6. Restore `ip` to `_start` label index.
+4. Preload `SP` with `program.memory.size`.
+5. Clear `stdout`.
+6. Set state to `IDLE`.
+7. Restore `ip` to `_start` label index.
 
 ## 3.7 Instruction Dispatch
 
@@ -978,7 +983,7 @@ Positive values are zero-padded to fill the full cell width.
 
 ### 3.11.1 Registers
 
-Six writable general-purpose registers: `AX`, `BX`, `CX`, `DX`, `SI`, `DI`.
+Eight writable general-purpose registers: `AX`, `BX`, `CX`, `DX`, `SI`, `DI`, `BP`, `SP`.
 Additionally, the UI and program-visible register snapshot include a read-only `IP` register that always exposes the VM's current internal instruction pointer as an integer value.
 Each holds a `RegisterValue | null`:
 
@@ -1227,7 +1232,7 @@ This mirrors the familiar VS Code "start or continue" paradigm.
    - `runtimeError` → `null`
    - `vmState` → `IDLE`
    - `currentLine` → `null`
-   - `registers` → `{ IP: { type: 'integer', value: 0 }, AX: null, BX: null, CX: null, DX: null, SI: null, DI: null }`
+   - `registers` → `{ IP: { type: 'integer', value: 0 }, AX: null, BX: null, CX: null, DX: null, SI: null, DI: null, BP: null, SP: null }`
    - `flags` → `{ ZF: false, SF: false, OF: false }`
    - `memory` → `[]`
    - `memorySize` → `0`
@@ -1275,7 +1280,7 @@ When the VM is in `PAUSED` state, the following data is available for inspection
 | Data | Source | Description |
 |------|--------|-------------|
 | **Current Line** | `vm.currentLine` | 1-based source line of the next instruction to execute |
-| **Registers** | `vm.registers.getSnapshot()` | Values and types of read-only `IP` plus AX, BX, CX, DX, SI, DI |
+| **Registers** | `vm.registers.getSnapshot()` | Values and types of read-only `IP` plus AX, BX, CX, DX, SI, DI, BP, SP |
 | **Flags** | `vm.registers.getFlagsSnapshot()` | ZF, SF, OF boolean values |
 | **Memory** | `vm.memory.getSnapshot()` | Full memory array (ASCII codes) |
 | **Stdout** | `vm.stdout` | Accumulated program output |
@@ -1329,7 +1334,7 @@ buildVM():
 
 - Allocate `Memory` with size and optional init value from `#memory` directive.
 - Apply all `#data` directives to memory.
-- Initialize `RegisterFile` (all registers null/unset).
+- Initialize `RegisterFile` (all registers null/unset), then preload `SP` with `#memory` size.
 - Set instruction pointer to `_start` label index (or 0 if absent).
 - State = `IDLE`.
 

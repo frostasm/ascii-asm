@@ -33,6 +33,16 @@ function buildVM(source: string, inputs: string[] = []) {
 describe('VM', () => {
   // ── MOV ──────────────────────────────────────────────
 
+  it('initializes SP with memory size before execution starts', () => {
+    const { vm } = buildVM(`
+#memory 64
+_start:
+    HALT
+`);
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 64 });
+    expect(vm.registers.get('AX' as any)).toBeNull();
+  });
+
   it('MOV reg, immediate', async () => {
     const { vm } = buildVM(`
 _start:
@@ -75,6 +85,32 @@ _start:
     await vm.run();
     expect(vm.registers.get('SI' as any)).toEqual({ type: 'integer', value: 42 });
     expect(vm.registers.get('DI' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
+  it('MOV supports BP and SP registers', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV BP, 42
+    MOV SP, BP
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('BP' as any)).toEqual({ type: 'integer', value: 42 });
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
+  it('reset restores SP to memory size', async () => {
+    const { vm } = buildVM(`
+#memory 32
+_start:
+    MOV SP, 1
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 1 });
+    vm.reset();
+    expect(vm.registers.get('SP' as any)).toEqual({ type: 'integer', value: 32 });
+    expect(vm.registers.get('AX' as any)).toBeNull();
   });
 
   it('MOV reg, IP reads the current instruction pointer', async () => {
@@ -356,6 +392,20 @@ target:
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 9 });
   });
 
+  it('JMP supports BP register target', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV BP, target
+    JMP BP
+    MOV AX, 0
+target:
+    MOV AX, 9
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 9 });
+  });
+
   it('JMP supports IP register target', async () => {
     const { vm } = buildVM(`
 _start:
@@ -494,6 +544,17 @@ _start:
 _start:
     MOV DI, 42
     WRITE DI
+    HALT
+`);
+    await vm.run();
+    expect(vm.stdout).toBe('42');
+  });
+
+  it('WRITE supports SP register', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV SP, 42
+    WRITE SP
     HALT
 `);
     await vm.run();

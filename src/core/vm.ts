@@ -66,6 +66,7 @@ export class VM {
 
     // Initialize registers
     this.registers = new RegisterFile();
+    this.initializeRuntimeRegisters();
 
     // Set IP to _start
     const startIndex = program.labels.get('_start');
@@ -113,6 +114,7 @@ export class VM {
       this.memory.initializeData(d.address, d.dataType, d.value);
     }
     this.registers.reset();
+    this.initializeRuntimeRegisters();
     this.stdout = '';
     this.state = VMState.IDLE;
     this._pauseRequested = false;
@@ -121,6 +123,11 @@ export class VM {
     this.lastAccess = createEmptyHighlights();
     const startIndex = this.program.labels.get('_start');
     this.ip = startIndex ?? 0;
+  }
+
+  /** Initialize VM-managed runtime registers before execution starts. */
+  private initializeRuntimeRegisters(): void {
+    this.registers.set(Register.SP, { type: 'integer', value: this.program.memory.size });
   }
 
   /** Execute one instruction and pause. Public API for single-stepping. */

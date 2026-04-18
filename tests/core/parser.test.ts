@@ -155,6 +155,18 @@ _start:
     expect(program.instructions[1].operands[1]).toMatchObject({ kind: 'register', reg: 'SI' });
   });
 
+  it('parses BP and SP as registers', () => {
+    const program = parse(`
+_start:
+    MOV BP, 12
+    MOV SP, BP
+    HALT
+`);
+    expect(program.instructions[0].operands[0]).toMatchObject({ kind: 'register', reg: 'BP' });
+    expect(program.instructions[1].operands[0]).toMatchObject({ kind: 'register', reg: 'SP' });
+    expect(program.instructions[1].operands[1]).toMatchObject({ kind: 'register', reg: 'BP' });
+  });
+
   it('parses IP as a register', () => {
     const program = parse(`
 _start:

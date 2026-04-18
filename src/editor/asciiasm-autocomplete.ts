@@ -28,6 +28,8 @@ const REGISTER_COMPLETIONS = [
   { label: 'DX', type: 'variable', info: 'Auxiliary register' },
   { label: 'SI', type: 'variable', info: 'Source index / pointer register' },
   { label: 'DI', type: 'variable', info: 'Destination index / pointer register' },
+  { label: 'BP', type: 'variable', info: 'Base pointer register' },
+  { label: 'SP', type: 'variable', info: 'Stack pointer register' },
 ];
 
 const TYPE_COMPLETIONS = [
