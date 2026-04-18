@@ -2,7 +2,7 @@ import { StreamLanguage, StringStream } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 
 const MNEMONICS = new Set([
-  'MOV', 'ADD', 'SUB', 'CMP',
+  'MOV', 'ADD', 'IMUL', 'SUB', 'CMP',
   'JMP', 'CALL', 'RET', 'JE', 'JNE', 'JL', 'JLE', 'JG', 'JGE', 'JO', 'JNO',
   'READ', 'WRITE', 'WRITELN', 'HALT',
 ]);

@@ -88,6 +88,7 @@ export const PROGRAM_VISIBLE_REGISTERS: Register[] = [
 export enum Mnemonic {
   MOV = 'MOV',
   ADD = 'ADD',
+  IMUL = 'IMUL',
   SUB = 'SUB',
   CMP = 'CMP',
   JMP = 'JMP',

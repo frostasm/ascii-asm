@@ -202,6 +202,18 @@ _start:
     expect(program.instructions[2].mnemonic).toBe(Mnemonic.SUB);
   });
 
+  it('parses IMUL reg, immediate', () => {
+    const program = parse(`
+_start:
+    IMUL AX, 5
+    HALT
+`);
+    const instr = program.instructions[0];
+    expect(instr.mnemonic).toBe(Mnemonic.IMUL);
+    expect(instr.operands[0]).toMatchObject({ kind: 'register', reg: 'AX' });
+    expect(instr.operands[1]).toMatchObject({ kind: 'immediate', value: 5 });
+  });
+
   it('parses CMP instruction', () => {
     const program = parse(`
 _start:
@@ -474,6 +486,34 @@ _start:
     HALT
 `);
     expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);
+  });
+
+  it('reports unsupported IMUL single-operand form', () => {
+    const { errors } = tryParse(`
+_start:
+    IMUL AX
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('IMUL supports only the form'))).toBe(true);
+  });
+
+  it('reports unsupported IMUL three-operand form', () => {
+    const { errors } = tryParse(`
+_start:
+    IMUL AX, BX, 2
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('IMUL supports only the form'))).toBe(true);
+  });
+
+  it('reports IMUL memory destination', () => {
+    const { errors } = tryParse(`
+#memory 16
+_start:
+    IMUL DWORD [0], AX
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('IMUL destination must be a register'))).toBe(true);
   });
 
   it('reports duplicate label definitions', () => {

@@ -222,6 +222,42 @@ _start:
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 15 });
   });
 
+  it('IMUL reg, immediate', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, 6
+    IMUL AX, 7
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
+  it('IMUL reg, memory', async () => {
+    const { vm } = buildVM(`
+#memory 16
+#data 0, DWORD 7
+_start:
+    MOV AX, 6
+    IMUL AX, DWORD [0]
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
+  it('IMUL CHAR register raises type mismatch', async () => {
+    const { vm } = buildVM(`
+_start:
+    MOV AX, CHAR 'A'
+    IMUL AX, 2
+    HALT
+`);
+    const result = await vm.run();
+    expect(result.state).toBe(VMState.ERROR);
+    expect(result.error).toContain('Type Mismatch');
+  });
+
   it('ADD to IP raises runtime error', async () => {
     const { vm } = buildVM(`
 _start:

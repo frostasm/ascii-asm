@@ -267,6 +267,7 @@ export class VM {
     switch (instr.mnemonic) {
       case Mnemonic.MOV:   return this.executeMov(instr);
       case Mnemonic.ADD:   return this.executeAdd(instr);
+      case Mnemonic.IMUL:  return this.executeImul(instr);
       case Mnemonic.SUB:   return this.executeSub(instr);
       case Mnemonic.CMP:   return this.executeCmp(instr);
       case Mnemonic.CALL:  return this.executeCall(instr);
@@ -345,6 +346,33 @@ export class VM {
 
   private executeAdd(instr: Instruction): void {
     this.executeArithmetic(instr, (a, b) => a + b);
+  }
+
+  private executeImul(instr: Instruction): void {
+    const [dst, src] = instr.operands;
+    const line = instr.line;
+
+    if (instr.operands.length !== 2 || dst?.kind !== 'register') {
+      throw new RuntimeError('IMUL supports only the form: IMUL reg, reg|TYPE [addr]|imm', line);
+    }
+
+    this.assertRegisterWritable(dst.reg, line);
+    const regVal = this.getRegisterValue(dst.reg, line);
+    if (regVal.type !== 'integer') {
+      throw new TypeMismatchError(line);
+    }
+
+    const srcVal = this.resolveSource(src, line);
+    if (srcVal.type !== 'integer') {
+      throw new TypeMismatchError(line);
+    }
+
+    const mathResult = regVal.value * srcVal.value;
+    this.registers.set(dst.reg, { type: 'integer', value: mathResult });
+    this.stats.registerWrites++;
+    this.lastAccess.regWrites.push(dst.reg as string);
+    this.registers.updateFlags(mathResult, false);
+    this.ip++;
   }
 
   private executeSub(instr: Instruction): void {

@@ -3,6 +3,7 @@ import { autocompletion, CompletionContext, CompletionResult } from '@codemirror
 const MNEMONIC_COMPLETIONS = [
   { label: 'MOV', type: 'keyword', info: 'Move data: MOV dst, src' },
   { label: 'ADD', type: 'keyword', info: 'Addition: ADD dst, src' },
+  { label: 'IMUL', type: 'keyword', info: 'Signed multiply: IMUL reg, reg|TYPE [addr]|imm' },
   { label: 'SUB', type: 'keyword', info: 'Subtraction: SUB dst, src' },
   { label: 'CMP', type: 'keyword', info: 'Compare: CMP a, b' },
   { label: 'JMP', type: 'keyword', info: 'Unconditional jump: JMP label' },

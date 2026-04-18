@@ -276,8 +276,34 @@ export class Parser {
       if (op3) operands.push(op3);
     }
 
+    if (mnemonic === Mnemonic.IMUL) {
+      this.validateImulOperands(operands, line);
+    }
+
     this.skipToEndOfLine();
     return { mnemonic, operands, line };
+  }
+
+  private validateImulOperands(operands: Operand[], line: number): void {
+    if (operands.length !== 2) {
+      this.addError('IMUL supports only the form: IMUL reg, reg|TYPE [addr]|imm', line, 0);
+      return;
+    }
+
+    const [dst, src] = operands;
+    if (dst.kind !== 'register') {
+      this.addError('IMUL destination must be a register', line, 0);
+    }
+
+    if (src.kind === 'register' || src.kind === 'immediate') {
+      return;
+    }
+
+    if (src.kind === 'memory' && src.dataType !== DataType.CHAR && src.dataType !== DataType.TEXT) {
+      return;
+    }
+
+    this.addError('IMUL source must be a register, integer memory operand, or immediate', line, 0);
   }
 
   private parseOperand(context: Mnemonic): Operand | null {

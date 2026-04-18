@@ -303,7 +303,7 @@ results in a runtime error: `Runtime Error: Type Mismatch`.
 | `SF` | Sign Flag | Mathematical result is negative (not truncated after overflow) |
 | `OF` | Overflow Flag | Result exceeds the type's range |
 
-Flags are updated by: `READ`, `MOV`, `ADD`, `SUB`, `CMP`. All other instructions do not modify flags.
+Flags are updated by: `READ`, `MOV`, `ADD`, `IMUL`, `SUB`, `CMP`. All other instructions do not modify flags.
 
 ---
 
@@ -388,6 +388,7 @@ On overflow, `SF` is based on the mathematical result, not the truncated one.
 
 ```nasm
 ADD dst, src
+IMUL dst, src
 SUB dst, src
 ```
 
@@ -415,6 +416,21 @@ Result outside 32–126 — overflow (OF=1), result is clamped to the nearest ra
 For WORD/DWORD/QWORD: overflow → OF=1, result is written as-is using the least significant digits.
 
 TEXT does not support arithmetic.
+
+`IMUL` supports only the two-operand form below and performs signed integer multiplication:
+
+```nasm
+IMUL reg, reg
+IMUL reg, imm
+IMUL reg, TYPE [addr]
+```
+
+Rules:
+- `dst` must be a register that currently contains an integer value.
+- `src` may be an integer register, an integer immediate, or `WORD`/`DWORD`/`QWORD` memory.
+- `CHAR` and `TEXT` operands are not supported by `IMUL`.
+- Unsupported forms such as `IMUL src` and `IMUL dst, src, imm` are parse errors.
+- `IMUL` updates `ZF` and `SF` from the multiplication result. Since the result is stored in a register integer, `OF` remains `0`.
 
 ### 2.4.3 CMP — Comparison
 
@@ -728,6 +744,7 @@ _start:
 |-------------|-------------|:-----:|
 | `MOV dst, src` | Move (types must match; `MOV reg, label` stores an instruction pointer) | Yes |
 | `ADD dst, src` | Addition (CHAR±integer allowed) | Yes |
+| `IMUL dst, src` | Signed multiply (only `reg, reg|TYPE [addr]|imm`) | Yes |
 | `SUB dst, src` | Subtraction (CHAR±integer allowed) | Yes |
 | `CMP a, b` | Comparison (types must match) | Yes |
 | `JMP target` | Unconditional jump to label or integer register target | No |
@@ -925,6 +942,7 @@ reset(): void
 |----------|---------------|:-----------:|:------------:|
 | `MOV` | `executeMov()` | ✓ | Yes (on overflow) |
 | `ADD` | `executeAdd()` → `executeArithmetic()` | ✓ | Yes |
+| `IMUL` | `executeImul()` | ✓ | Yes |
 | `SUB` | `executeSub()` → `executeArithmetic()` | ✓ | Yes |
 | `CMP` | `executeCmp()` | ✓ | Yes |
 | `JMP/JE/JNE/JL/JLE/JG/JGE/JO/JNO` | `executeJump()` | Sets IP to target or ✓ | No |
@@ -966,7 +984,16 @@ Shared by `ADD` and `SUB`. The `op` parameter is `(a, b) => a + b` or `(a, b) =>
 
 Forbidden: CHAR ± CHAR, integer ± CHAR (src is CHAR).
 
-### 3.8.3 `executeCmp(instr)`
+### 3.8.3 `executeImul(instr)`
+
+Implements only `IMUL reg, reg|TYPE [addr]|imm`.
+
+- Destination must be a writable register with an integer value.
+- Source must resolve to an integer value.
+- `CHAR` and `TEXT` operands raise `Type Mismatch`.
+- The product is stored back into the destination register and updates FLAGS.
+
+### 3.8.4 `executeCmp(instr)`
 
 Computes `val1 - val2` and updates FLAGS. Does **not** store the result or advance any values.
 Both operands must be the same category (CHAR↔CHAR or integer↔integer).
