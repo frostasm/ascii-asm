@@ -3,7 +3,13 @@ import {
   Program, MemoryDirective, DataDirective, OverflowMode,
   Instruction, Operand, JUMP_MNEMONICS, AddressExpression,
 } from './types';
-import { ParseError, MissingStartLabelError, MissingHaltError, UndefinedLabelError } from './errors';
+import {
+  ParseError,
+  MissingStartLabelError,
+  MissingHaltError,
+  UndefinedLabelError,
+  DuplicateLabelError,
+} from './errors';
 import colorNames from 'color-name';
 
 // HEX_COLOR token alias for brevity inside parseDataDirectives
@@ -53,7 +59,11 @@ export class Parser {
 
       // Label definition
       if (tok.type === TokenType.LABEL_DEF) {
-        labels.set(tok.value, instructions.length);
+        if (labels.has(tok.value)) {
+          this.errors.push(new DuplicateLabelError(tok.value, tok.line));
+        } else {
+          labels.set(tok.value, instructions.length);
+        }
         this.advance();
         this.skipNewlines();
         continue;

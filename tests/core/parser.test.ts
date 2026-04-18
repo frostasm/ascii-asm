@@ -475,4 +475,16 @@ _start:
 `);
     expect(errors.some(e => e.message.includes('nonexistent'))).toBe(true);
   });
+
+  it('reports duplicate label definitions', () => {
+    const { errors } = tryParse(`
+_start:
+    JMP loop
+loop:
+    WRITE 1
+loop:
+    HALT
+`);
+    expect(errors.some(e => e.message.includes('Duplicate label: loop'))).toBe(true);
+  });
 });

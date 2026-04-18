@@ -66,3 +66,9 @@ export class UndefinedLabelError extends ParseError {
     super(`Undefined label: ${label}`, line);
   }
 }
+
+export class DuplicateLabelError extends ParseError {
+  constructor(label: string, line: number) {
+    super(`Duplicate label: ${label}`, line);
+  }
+}
