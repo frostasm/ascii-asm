@@ -2,7 +2,7 @@ import {
   Program, Instruction, Mnemonic, Operand, Register, DataType,
   RegisterValue, VMState, StepResult, DATA_TYPE_RANGE, DATA_TYPE_SIZE,
   JUMP_MNEMONICS, OverflowMode, VMStats, createEmptyStats,
-  AccessHighlights, createEmptyHighlights,
+  AccessHighlights, createEmptyHighlights, AddressExpression,
 } from './types';
 import { Memory } from './memory';
 import { RegisterFile } from './registers';
@@ -699,13 +699,21 @@ export class VM {
   /**
    * Resolve an address (register or immediate) to a numeric address.
    */
-  private resolveAddress(addr: Register | number, line: number): number {
+  private resolveAddress(addr: AddressExpression, line: number): number {
     if (typeof addr === 'number') return addr;
-    const regVal = this.getRegisterValue(addr, line);
-    if (regVal.type !== 'integer') {
+    if (typeof addr === 'string') {
+      const regVal = this.getRegisterValue(addr, line);
+      if (regVal.type !== 'integer') {
+        throw new TypeMismatchError(line);
+      }
+      return regVal.value;
+    }
+
+    const baseValue = this.getRegisterValue(addr.base, line);
+    if (baseValue.type !== 'integer') {
       throw new TypeMismatchError(line);
     }
-    return regVal.value;
+    return baseValue.value + addr.displacement;
   }
 
   /**

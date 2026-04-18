@@ -122,6 +122,19 @@ _start:
     expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 42 });
   });
 
+  it('MOV reg, memory supports base + displacement addressing', async () => {
+    const { vm } = buildVM(`
+#memory 24
+#data 8, DWORD 42
+_start:
+    MOV BX, 4
+    MOV AX, DWORD [BX + 4]
+    HALT
+`);
+    await vm.run();
+    expect(vm.registers.get('AX' as any)).toEqual({ type: 'integer', value: 42 });
+  });
+
   it('MOV memory, reg', async () => {
     const { vm } = buildVM(`
 #memory 16
@@ -133,6 +146,20 @@ _start:
 `);
     await vm.run();
     expect(vm.memory.readInteger(0, 'DWORD' as any)).toBe(99);
+  });
+
+  it('MOV memory, reg supports base + displacement addressing', async () => {
+    const { vm } = buildVM(`
+#memory 24
+#data 12, DWORD 0
+_start:
+    MOV BX, 8
+    MOV AX, 99
+    MOV DWORD [BX + 4], AX
+    HALT
+`);
+    await vm.run();
+    expect(vm.memory.readInteger(12, 'DWORD' as any)).toBe(99);
   });
 
   it('MOV memory, immediate', async () => {

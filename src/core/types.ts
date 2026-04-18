@@ -12,6 +12,7 @@ export enum TokenType {
   STRING_LITERAL = 'STRING_LITERAL', // "Hello$"
   LBRACKET = 'LBRACKET',          // [
   RBRACKET = 'RBRACKET',          // ]
+  PLUS = 'PLUS',                  // +
   COMMA = 'COMMA',                // ,
   HEX_COLOR = 'HEX_COLOR',        // #RRGGBB or #RRGGBBAA color literal
   NEWLINE = 'NEWLINE',
@@ -150,9 +151,17 @@ export interface StringImmediateOperand {
   value: string; // raw string content (without surrounding quotes)
 }
 
+export interface BaseDisplacementAddress {
+  kind: 'base_displacement';
+  base: Register;
+  displacement: number;
+}
+
+export type AddressExpression = Register | number | BaseDisplacementAddress;
+
 export interface MemoryOperand {
   kind: 'memory';
-  address: Register | number;
+  address: AddressExpression;
   dataType: DataType;
 }
 

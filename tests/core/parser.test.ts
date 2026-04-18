@@ -271,6 +271,38 @@ _start:
     expect(instr.operands[1]).toMatchObject({ kind: 'memory', address: 'SI', dataType: DataType.DWORD });
   });
 
+  it('parses memory access with base + displacement address', () => {
+    const program = parse(`
+#memory 32
+_start:
+    MOV BX, 8
+    MOV AX, DWORD [BX + 4]
+    HALT
+`);
+    const instr = program.instructions[1];
+    expect(instr.operands[1]).toMatchObject({
+      kind: 'memory',
+      dataType: DataType.DWORD,
+      address: { kind: 'base_displacement', base: 'BX', displacement: 4 },
+    });
+  });
+
+  it('parses memory access with negative displacement', () => {
+    const program = parse(`
+#memory 32
+_start:
+    MOV SI, 8
+    MOV AX, DWORD [SI + -4]
+    HALT
+`);
+    const instr = program.instructions[1];
+    expect(instr.operands[1]).toMatchObject({
+      kind: 'memory',
+      dataType: DataType.DWORD,
+      address: { kind: 'base_displacement', base: 'SI', displacement: -4 },
+    });
+  });
+
   it('collects labels correctly', () => {
     const program = parse(`
 _start:

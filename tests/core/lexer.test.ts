@@ -101,6 +101,15 @@ describe('Lexer', () => {
     expect(tokens[6]).toMatchObject({ type: TokenType.RBRACKET });
   });
 
+  it('tokenizes base + displacement memory operands', () => {
+    const lexer = new Lexer('MOV AX, DWORD [BX + 4]');
+    const tokens = lexer.tokenize();
+    expect(tokens[5]).toMatchObject({ type: TokenType.REGISTER, value: 'BX' });
+    expect(tokens[6]).toMatchObject({ type: TokenType.PLUS, value: '+' });
+    expect(tokens[7]).toMatchObject({ type: TokenType.NUMBER, value: '4' });
+    expect(tokens[8]).toMatchObject({ type: TokenType.RBRACKET });
+  });
+
   it('tokenizes negative numbers', () => {
     const lexer = new Lexer('#data 0, WORD -4');
     const tokens = lexer.tokenize();

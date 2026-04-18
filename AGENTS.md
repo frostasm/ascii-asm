@@ -341,9 +341,11 @@ Labels can be used directly in branch instructions (`JMP`, `JE`, ...) and can al
 | `CHAR 'c'` | character constant (type — CHAR) |
 | `TYPE [imm]` | access to memory of type "TYPE" at the numeric constant address imm |
 | `TYPE [reg]` | access to memory of type "TYPE" at the address retrieved from the register reg |
+| `TYPE [reg + imm]` | access to memory of type "TYPE" at the address `register_value + displacement` |
 
 `TYPE` is mandatory for every memory access through `[...]`.
 `CHAR 'c'` can be used as an operand in `MOV reg, CHAR 'c'`, `CMP reg, CHAR 'c'` and `MOV CHAR [addr], 'c'`.
+For memory operands, `addr` may be `[imm]`, `[reg]`, or `[reg + imm]`. The displacement is a signed decimal integer.
 
 ---
 
@@ -358,12 +360,13 @@ MOV reg, label              ; reg ← instruction pointer of label (register typ
 MOV reg, CHAR 'c'           ; reg ← character (register type → CHAR)
 MOV reg, reg2               ; reg ← reg2 (value and type are copied)
 MOV reg, TYPE [addr]        ; reg ← value from memory (register type → according to TYPE)
+MOV reg, TYPE [reg + imm]   ; reg ← value from memory via Base+Displacement addressing
 MOV TYPE [addr], reg        ; memory ← reg (register type must match TYPE)
 MOV TYPE [addr], imm        ; memory ← constant (TYPE: WORD/DWORD/QWORD, not CHAR)
 MOV CHAR [addr], 'c'        ; memory CHAR ← character literal
 ```
 
-`[addr]` — `[imm]` or `[reg]`.
+`[addr]` — `[imm]`, `[reg]`, or `[reg + imm]`.
 
 **Type rules:**
 - `MOV reg, label` — reg receives an integer instruction pointer for the first instruction after the label.
@@ -625,6 +628,20 @@ _start:
   HALT
 ```
 
+### Base + Displacement Addressing
+
+```nasm
+#memory 24
+#data 8, DWORD 10
+#data 12, DWORD 20
+
+_start:
+  MOV BX, 8
+  MOV AX, DWORD [BX + 4]   ; reads DWORD [12]
+  WRITELN AX               ; outputs: 20
+  HALT
+```
+
 ---
 
 ## 2.6 Instruction Summary Table
@@ -661,7 +678,7 @@ _start:
 ### Variables
 
 At the current stage AsciiAsm does not have named variables. Data is addressed
-numerically (`[0]`, `[4]`, `[BX]`), and initialization is done via `#data`.
+numerically (`[0]`, `[4]`, `[BX]`, `[BX + 4]`), and initialization is done via `#data`.
 
 In future versions, named variables are planned:
 
@@ -679,7 +696,6 @@ referring to it by name: `MOV AX, DWORD [x]`.
 - **Type conversion** — `CAST` instruction for explicit integer↔CHAR conversion (via ASCII code).
 - **Stack and subroutines** — `PUSH`, `POP`, `CALL`, `RET`.
 - **Multiplication / division** — `MUL`, `DIV`.
-- **Offset addressing** — `[BX + 4]` for working with arrays.
 - **Macros** — defining custom abbreviations.
 
 ---
@@ -916,7 +932,7 @@ Sets `this.state = VMState.HALTED`. Does **not** increment `ip`.
 | Helper | Purpose |
 |--------|---------|
 | `resolveSource(op, line)` | Converts any source operand to a `RegisterValue` (`{ type, value }`). Handles register, immediate, char_immediate, and memory operands. |
-| `resolveAddress(addr, line)` | Converts a register or numeric address to a number. If the address comes from a register, the register must contain an integer. |
+| `resolveAddress(addr, line)` | Converts an immediate, register, or Base+Displacement address to a number. If the address uses a register, that register must contain an integer. |
 | `getRegisterValue(reg, line)` | Returns the register's value or throws `RuntimeError` if uninitialized (`null`). |
 | `checkOverflowHalt(overflow, line)` | If `overflowMode === 'halt'` and `overflow` is `true`, sets state to `ERROR` and throws `TypeOverflowError`. |
 

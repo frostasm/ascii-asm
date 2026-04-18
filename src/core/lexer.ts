@@ -84,6 +84,11 @@ export class Lexer {
         this.advance();
         continue;
       }
+      if (ch === '+') {
+        this.pushToken(TokenType.PLUS, '+');
+        this.advance();
+        continue;
+      }
 
       // Comma
       if (ch === ',') {
@@ -97,7 +102,7 @@ export class Lexer {
         const prev = this.lastNonNewlineToken();
         if (!prev || prev.type === TokenType.COMMA || prev.type === TokenType.DIRECTIVE ||
             prev.type === TokenType.LBRACKET || prev.type === TokenType.MNEMONIC ||
-            prev.type === TokenType.TYPE_PREFIX) {
+            prev.type === TokenType.TYPE_PREFIX || prev.type === TokenType.PLUS) {
           this.readNumber();
           continue;
         }

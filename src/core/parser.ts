@@ -1,7 +1,7 @@
 import {
   Token, TokenType, DataType, Register, Mnemonic,
   Program, MemoryDirective, DataDirective, OverflowMode,
-  Instruction, Operand, JUMP_MNEMONICS,
+  Instruction, Operand, JUMP_MNEMONICS, AddressExpression,
 } from './types';
 import { ParseError, MissingStartLabelError, MissingHaltError, UndefinedLabelError } from './errors';
 import colorNames from 'color-name';
@@ -333,17 +333,27 @@ export class Parser {
     return null;
   }
 
-  private parseAddressExpression(): Register | number {
+  private parseAddressExpression(): AddressExpression {
     const tok = this.current();
     if (tok.type === TokenType.REGISTER) {
       this.advance();
-      return tok.value as Register;
+      const base = tok.value as Register;
+      if (this.check(TokenType.PLUS)) {
+        this.advance();
+        const displacementTok = this.expect(TokenType.NUMBER, 'Expected displacement after \'+\'');
+        return {
+          kind: 'base_displacement',
+          base,
+          displacement: parseInt(displacementTok.value, 10),
+        };
+      }
+      return base;
     }
     if (tok.type === TokenType.NUMBER) {
       this.advance();
       return parseInt(tok.value, 10);
     }
-    this.addError('Expected register or number as address', tok.line, tok.col);
+    this.addError('Expected address in the form of number, register, or register + displacement', tok.line, tok.col);
     this.advance();
     return 0;
   }
